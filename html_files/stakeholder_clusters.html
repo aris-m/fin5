@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg,#fff); color: var(--text,#111); padding: 20px; }
+:root { --border:#e5e7eb; --bg:#fff; --text:#111827; --muted:#6b7280; --surface:#f9fafb; }
+@media(prefers-color-scheme:dark){:root{--border:#374151;--bg:#111827;--text:#f9fafb;--muted:#9ca3af;--surface:#1f2937;}}
+
+h1 { font-size:15px; font-weight:800; margin-bottom:3px; }
+.sub { font-size:12px; color:var(--muted); margin-bottom:18px; }
+
+.cluster-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+
+.cluster { border-radius:12px; padding:14px; border:2px solid; cursor:pointer; transition:all 0.15s; }
+.cluster:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,0.1); }
+.cluster.active { box-shadow:0 4px 20px rgba(0,0,0,0.15); }
+
+.c1 { border-color:#3b82f6; background:color-mix(in srgb,#3b82f6 7%,transparent); }
+.c2 { border-color:#f59e0b; background:color-mix(in srgb,#f59e0b 7%,transparent); }
+.c3 { border-color:#10b981; background:color-mix(in srgb,#10b981 7%,transparent); }
+.c4 { border-color:#8b5cf6; background:color-mix(in srgb,#8b5cf6 7%,transparent); }
+
+.cluster-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.cluster-icon { font-size:24px; }
+.cluster-title { font-size:14px; font-weight:800; }
+.cluster-tagline { font-size:11px; color:var(--muted); margin-top:1px; }
+
+.members { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.member { display:flex; align-items:center; gap:5px; padding:4px 9px; border-radius:20px; font-size:11.5px; font-weight:600; background:color-mix(in srgb,currentColor 12%,transparent); border:1px solid color-mix(in srgb,currentColor 25%,transparent); }
+
+.cluster-question { font-size:11.5px; line-height:1.5; color:var(--muted); border-top:1px solid color-mix(in srgb,currentColor 20%,transparent); padding-top:8px; margin-top:4px; }
+.cluster-question strong { color:var(--text); }
+
+/* detail panel */
+.detail { border:1.5px solid var(--border); border-radius:10px; padding:14px; display:none; background:var(--surface); }
+.detail.show { display:block; }
+.detail-title { font-size:14px; font-weight:800; margin-bottom:10px; }
+.four-col { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; }
+.d-card { border:1.5px solid var(--border); border-radius:8px; padding:10px; background:var(--bg); }
+.d-emoji { font-size:18px; margin-bottom:4px; }
+.d-name { font-size:12px; font-weight:700; margin-bottom:4px; }
+.d-need { font-size:11px; color:var(--muted); line-height:1.4; }
+.d-view { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-top:6px; padding:3px 7px; border-radius:4px; display:inline-block; }
+
+.axis-box { margin-top:12px; padding:10px 12px; border-radius:8px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+.ax { text-align:center; }
+.ax-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted); margin-bottom:3px; }
+.ax-val { font-size:12px; font-weight:700; }
+</style>
+</head>
+<body>
+<h1>Stakeholder Clusters</h1>
+<p class="sub">4 natürliche Gruppen nach Motivation und Nutzungsverhalten · Klicken für Details</p>
+
+<div class="cluster-grid">
+
+  <!-- CLUSTER 1 -->
+  <div class="cluster c1" onclick="toggle(1)" style="color:#3b82f6">
+    <div class="cluster-header">
+      <span class="cluster-icon">💰</span>
+      <div>
+        <div class="cluster-title">Capital Allocators</div>
+        <div class="cluster-tagline">Folgen dem Geld — wollen Risikosignale</div>
+      </div>
+    </div>
+    <div class="members">
+      <span class="member" style="color:#3b82f6">📈 Institutionelle Investoren</span>
+      <span class="member" style="color:#3b82f6">💶 Privatanleger</span>
+      <span class="member" style="color:#3b82f6">🌱 ESG Fonds</span>
+      <span class="member" style="color:#3b82f6">🏦 Banken</span>
+    </div>
+    <div class="cluster-question" style="color:#3b82f6">
+      <strong>Kernfrage:</strong> "Ist diese Firma gut regiert genug, um mein Geld zu riskieren?"
+    </div>
+  </div>
+
+  <!-- CLUSTER 2 -->
+  <div class="cluster c2" onclick="toggle(2)" style="color:#f59e0b">
+    <div class="cluster-header">
+      <span class="cluster-icon">⚖️</span>
+      <div>
+        <div class="cluster-title">Accountability Actors</div>
+        <div class="cluster-tagline">Halten Unternehmen rechenschaftspflichtig</div>
+      </div>
+    </div>
+    <div class="members">
+      <span class="member" style="color:#f59e0b">⚖️ Regulatoren / BaFin</span>
+      <span class="member" style="color:#f59e0b">🗳️ Proxy Advisors</span>
+      <span class="member" style="color:#f59e0b">✊ NGOs / Vereine</span>
+      <span class="member" style="color:#f59e0b">📰 Presse</span>
+    </div>
+    <div class="cluster-question" style="color:#f59e0b">
+      <strong>Kernfrage:</strong> "Wer verdient zu viel — und können wir das beweisen?"
+    </div>
+  </div>
+
+  <!-- CLUSTER 3 -->
+  <div class="cluster c3" onclick="toggle(3)" style="color:#10b981">
+    <div class="cluster-header">
+      <span class="cluster-icon">🏢</span>
+      <div>
+        <div class="cluster-title">Corporate Insiders</div>
+        <div class="cluster-tagline">Setzen oder validieren Vergütung</div>
+      </div>
+    </div>
+    <div class="members">
+      <span class="member" style="color:#10b981">🏛️ Board / Aufsichtsrat</span>
+      <span class="member" style="color:#10b981">👷 Mitarbeiter / Betriebsrat</span>
+      <span class="member" style="color:#10b981">📋 Vergütungsberater</span>
+    </div>
+    <div class="cluster-question" style="color:#10b981">
+      <strong>Kernfrage:</strong> "Wo stehen wir im Marktvergleich — und ist unser Paket verteidigbar?"
+    </div>
+  </div>
+
+  <!-- CLUSTER 4 -->
+  <div class="cluster c4" onclick="toggle(4)" style="color:#8b5cf6">
+    <div class="cluster-header">
+      <span class="cluster-icon">🔬</span>
+      <div>
+        <div class="cluster-title">Knowledge Producers</div>
+        <div class="cluster-tagline">Erzeugen und verbreiten Erkenntnisse</div>
+      </div>
+    </div>
+    <div class="members">
+      <span class="member" style="color:#8b5cf6">🔬 Forschung / Unis</span>
+      <span class="member" style="color:#8b5cf6">📰 Presse / Öffentlichkeit</span>
+    </div>
+    <div class="cluster-question" style="color:#8b5cf6">
+      <strong>Kernfrage:</strong> "Was sagen die Daten über Trends, Muster und Ungleichheit?"
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="detail" id="detail"></div>
+
+<script>
+const details = {
+  1: {
+    title: '💰 Capital Allocators — was sie im Dashboard sehen',
+    color: '#3b82f6',
+    members: [
+      { e:'📈', name:'Institutionelle Investoren', need:'Governance Risk Score, Red Flags, Peer Ranking, Portfolio-Screening', view:'Risk View', vc:'#3b82f6' },
+      { e:'💶', name:'Privatanleger', need:'Simple Ampel-Signal, "Ist das fair?"-Erklärung, AGM Stimmhilfe', view:'Simple View', vc:'#0891b2' },
+      { e:'🌱', name:'ESG Fonds', need:'G-Score Trend, ESG-KPIs in LTI, Nachhaltigkeits-Kopplung', view:'ESG View', vc:'#16a34a' },
+      { e:'🏦', name:'Banken', need:'Governance-Score als Kreditrisiko-Input, M&A Due Diligence', view:'Risk View', vc:'#4f46e5' },
+    ],
+    axes: [{ l:'Komplexität', v:'Hoch → Niedrig' }, { l:'Zeitraum', v:'3–5 Jahre Trend' }, { l:'Sprache', v:'"Risiko", "Signal"' }]
+  },
+  2: {
+    title: '⚖️ Accountability Actors — was sie im Dashboard sehen',
+    color: '#f59e0b',
+    members: [
+      { e:'⚖️', name:'Regulatoren / BaFin', need:'Marktweite Anomalien, ARUG II Compliance, Policy Impact', view:'Market View', vc:'#dc2626' },
+      { e:'🗳️', name:'Proxy Advisors', need:'Batch AGM Screening, Say-on-Pay Risk Score, Vote Flags', view:'Batch View', vc:'#9333ea' },
+      { e:'✊', name:'NGOs / Vereine', need:'"Schlechte Zeiten"-Alarm, CEO-Worker-Ratio, Kampagnenmaterial', view:'Accountability View', vc:'#db2777' },
+      { e:'📰', name:'Presse', need:'Outlier Ranking, Scandal Finder, Exportierbare Visualisierungen', view:'Story View', vc:'#b45309' },
+    ],
+    axes: [{ l:'Komplexität', v:'Mittel' }, { l:'Zeitraum', v:'Aktuell + Verlauf' }, { l:'Sprache', v:'"Verstoß", "Outlier"' }]
+  },
+  3: {
+    title: '🏢 Corporate Insiders — was sie im Dashboard sehen',
+    color: '#10b981',
+    members: [
+      { e:'🏛️', name:'Board / Aufsichtsrat', need:'Peer Percentile, STI/LTI Struktur, Say-on-Pay Risikocheck', view:'Benchmark View', vc:'#8b5cf6' },
+      { e:'👷', name:'Mitarbeiter / Betriebsrat', need:'CEO-Worker Ratio, Pay Gap Trend, Verhandlungsdaten', view:'Fairness View', vc:'#f97316' },
+      { e:'📋', name:'Vergütungsberater', need:'Schnelle Peer-Gruppen, Szenario-Modelling, Daten-Export', view:'Advisor View', vc:'#475569' },
+    ],
+    axes: [{ l:'Komplexität', v:'Mittel' }, { l:'Zeitraum', v:'Aktuell + Peers' }, { l:'Sprache', v:'"Benchmark", "Markt"' }]
+  },
+  4: {
+    title: '🔬 Knowledge Producers — was sie im Dashboard sehen',
+    color: '#8b5cf6',
+    members: [
+      { e:'🔬', name:'Forschung / Unis', need:'Vollständiger Datenzugang, Stat. Zusammenfassungen, Mitbestimmungs-Analyse', view:'Research View', vc:'#0369a1' },
+      { e:'📰', name:'Presse / Öffentlichkeit', need:'15-Jahres-Trends, Interaktive Charts, Embed-fähige Grafiken', view:'Story View', vc:'#b45309' },
+    ],
+    axes: [{ l:'Komplexität', v:'Sehr hoch' }, { l:'Zeitraum', v:'Volle 15 Jahre' }, { l:'Sprache', v:'"Trend", "Befund"' }]
+  }
+};
+
+let active = null;
+function toggle(n) {
+  active = active===n ? null : n;
+  const det = document.getElementById('detail');
+  if (!active) { det.classList.remove('show'); return; }
+  const d = details[n];
+  det.innerHTML = `
+    <div class="detail-title">${d.title}</div>
+    <div class="four-col">
+      ${d.members.map(m=>`
+        <div class="d-card">
+          <div class="d-emoji">${m.e}</div>
+          <div class="d-name">${m.name}</div>
+          <div class="d-need">${m.need}</div>
+          <div class="d-view" style="background:color-mix(in srgb,${m.vc} 12%,transparent);color:${m.vc}">${m.view}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="axis-box" style="background:color-mix(in srgb,${d.color} 6%,transparent)">
+      ${d.axes.map(a=>`
+        <div class="ax">
+          <div class="ax-label">${a.l}</div>
+          <div class="ax-val" style="color:${d.color}">${a.v}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  det.classList.add('show');
+}
+</script>
+</body>
+</html>

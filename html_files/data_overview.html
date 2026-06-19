@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg,#fff); color: var(--text,#111); padding: 20px; font-size: 13px; }
+:root { --border:#e5e7eb; --bg:#fff; --text:#111827; --muted:#6b7280; --surface:#f9fafb; }
+@media(prefers-color-scheme:dark){:root{--border:#374151;--bg:#111827;--text:#f9fafb;--muted:#9ca3af;--surface:#1f2937;}}
+
+h1 { font-size:15px; font-weight:800; margin-bottom:3px; }
+.sub { font-size:12px; color:var(--muted); margin-bottom:16px; }
+.sec { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.07em; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.sec::after { content:''; flex:1; height:1px; background:var(--border); }
+
+/* BANNER */
+.banner { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px; }
+.stat { border:1.5px solid var(--border); border-radius:9px; padding:12px; text-align:center; }
+.stat.green { border-color:#22c55e; background:color-mix(in srgb,#22c55e 6%,transparent); }
+.stat.blue { border-color:#3b82f6; background:color-mix(in srgb,#3b82f6 6%,transparent); }
+.stat.orange { border-color:#f97316; background:color-mix(in srgb,#f97316 6%,transparent); }
+.stat.red { border-color:#ef4444; background:color-mix(in srgb,#ef4444 6%,transparent); }
+.stat-val { font-size:22px; font-weight:900; line-height:1; margin-bottom:3px; }
+.stat-lbl { font-size:10.5px; color:var(--muted); }
+
+/* DATA SOURCES */
+.sources { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; }
+.src { border:1.5px solid var(--border); border-radius:9px; padding:12px; }
+.src-title { font-size:12px; font-weight:800; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+.src-badge { font-size:9px; padding:2px 7px; border-radius:20px; font-weight:700; }
+.src-rows { font-size:11px; color:var(--muted); margin-bottom:6px; }
+.src-cols { display:flex; flex-wrap:wrap; gap:3px; }
+.col-chip { font-size:9.5px; padding:2px 6px; border-radius:4px; background:var(--surface); border:1px solid var(--border); }
+.col-chip.key { background:color-mix(in srgb,#3b82f6 10%,transparent); border-color:#93c5fd; color:#1d4ed8; }
+
+/* COMPANIES TABLE */
+.co-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; margin-bottom:16px; }
+.co { display:flex; align-items:center; justify-content:space-between; padding:6px 9px; border-radius:7px; background:var(--surface); border:1px solid var(--border); font-size:11px; }
+.co-name { font-weight:600; }
+.co-year { font-size:10px; color:var(--muted); }
+.co-badge { font-size:9px; padding:1px 6px; border-radius:10px; font-weight:700; }
+.since88 { background:#dcfce7; color:#15803d; }
+.since95 { background:#dbeafe; color:#1d4ed8; }
+.since98 { background:#fef9c3; color:#854d0e; }
+.since00 { background:#f3e8ff; color:#7e22ce; }
+
+/* HIGHLIGHT BOX */
+.hbox { border-radius:10px; padding:12px 14px; margin-bottom:16px; display:flex; gap:12px; align-items:flex-start; }
+.hbox.gold { background:color-mix(in srgb,#f59e0b 8%,transparent); border:2px solid #f59e0b; }
+.hbox.red { background:color-mix(in srgb,#ef4444 7%,transparent); border:2px solid #ef4444; }
+.hbox-icon { font-size:24px; }
+.hbox-title { font-size:13px; font-weight:800; margin-bottom:3px; }
+.hbox-body { font-size:11.5px; color:var(--muted); line-height:1.5; }
+.hbox-body strong { color:var(--text); }
+
+/* COVERAGE GRID */
+.cov-wrap { overflow-x:auto; margin-bottom:16px; }
+table { border-collapse:collapse; font-size:10px; width:100%; }
+th { padding:4px 6px; text-align:center; font-weight:700; color:var(--muted); background:var(--surface); white-space:nowrap; }
+th.co-th { text-align:left; min-width:120px; }
+td { padding:3px 5px; text-align:center; border-bottom:1px solid var(--border); }
+td.co-td { text-align:left; font-weight:600; font-size:10.5px; padding-left:0; }
+.cell-ok { background:#dcfce7; color:#15803d; border-radius:3px; font-weight:700; }
+.cell-na { color:var(--muted); font-size:9px; }
+</style>
+</head>
+<body>
+<h1>Data Overview — TUM Hackathon</h1>
+<p class="sub">Was wir haben, was wir bauen können</p>
+
+<!-- STATS -->
+<div class="banner">
+  <div class="stat green">
+    <div class="stat-val" style="color:#15803d">19</div>
+    <div class="stat-lbl">Jahre Coverage<br>(2006–2024)</div>
+  </div>
+  <div class="stat blue">
+    <div class="stat-val" style="color:#1d4ed8">6.7K</div>
+    <div class="stat-lbl">Executive-Year<br>Datenpunkte</div>
+  </div>
+  <div class="stat green">
+    <div class="stat-val" style="color:#15803d">0%</div>
+    <div class="stat-lbl">Missing Values<br>in DAX-15 Kern</div>
+  </div>
+  <div class="stat red">
+    <div class="stat-val" style="color:#dc2626">✓</div>
+    <div class="stat-lbl">Wirecard<br>im Datensatz</div>
+  </div>
+</div>
+
+<!-- DATA SOURCES -->
+<div class="sec">Datenquellen</div>
+<div class="sources">
+  <div class="src">
+    <div class="src-title">📊 2008–2020 CSVs <span class="src-badge" style="background:#dcfce7;color:#15803d">HAUPTQUELLE</span></div>
+    <div class="src-rows">1,467 Firmen-Jahr / 6,726 Person-Jahr Zeilen · 163 Unternehmen · 2006–2021</div>
+    <div class="src-cols">
+      <span class="col-chip key">salary</span><span class="col-chip key">one_year_bonus</span><span class="col-chip key">multi_year_bonus</span><span class="col-chip key">total_equity_grants</span><span class="col-chip key">total_comp</span><span class="col-chip">ceo_flag</span><span class="col-chip">cfo_flag</span><span class="col-chip">gender</span><span class="col-chip">nationality</span><span class="col-chip">dob</span><span class="col-chip">board_entry/exit</span>
+    </div>
+  </div>
+  <div class="src">
+    <div class="src-title">📋 Excel 2022–2024 <span class="src-badge" style="background:#dbeafe;color:#1d4ed8">QUALITATIV REICH</span></div>
+    <div class="src-rows">Detaillierte STI/LTI-Kriterien, KPI-Gewichte, ESG-Anteile, Board-Demographics</div>
+    <div class="src-cols">
+      <span class="col-chip key">STI KPI weights</span><span class="col-chip key">LTI structure</span><span class="col-chip key">ESG %</span><span class="col-chip">Fixum</span><span class="col-chip">Zielvergütung</span><span class="col-chip">TSR</span><span class="col-chip">EPS</span>
+    </div>
+  </div>
+  <div class="src">
+    <div class="src-title">🏦 ORBIS 2005–2024 <span class="src-badge" style="background:#f3e8ff;color:#7e22ce">858 MB</span></div>
+    <div class="src-rows">Finanzkennzahlen: Revenue, EBIT, Mitarbeiterzahl, ROE, ROA für P4P-Analyse</div>
+    <div class="src-cols">
+      <span class="col-chip key">TURN (revenue)</span><span class="col-chip key">OPPL (EBIT)</span><span class="col-chip key">EMPL</span><span class="col-chip key">ROE</span><span class="col-chip key">ROA</span><span class="col-chip">TOAS</span><span class="col-chip">STAF</span>
+    </div>
+  </div>
+  <div class="src">
+    <div class="src-title">🌱 ESG Sheets 2023–2024 <span class="src-badge" style="background:#fef9c3;color:#854d0e">BONUS</span></div>
+    <div class="src-rows">ESG-Kriterien in STI/LTI, Environmental/Social/Governance Dummy-Variablen</div>
+    <div class="src-cols">
+      <span class="col-chip key">dummy_environmental</span><span class="col-chip key">dummy_social</span><span class="col-chip key">ESG % STI</span><span class="col-chip key">ESG % LTI</span><span class="col-chip">ESG components</span>
+    </div>
+  </div>
+</div>
+
+<!-- WIRECARD HIGHLIGHT -->
+<div class="hbox red">
+  <div class="hbox-icon">🚨</div>
+  <div>
+    <div class="hbox-title">Wirecard ist im Datensatz — Markus Braun, Jan Marsalek, Burkhard Ley</div>
+    <div class="hbox-body"><strong>2017–2019 mit Vergütungsdaten.</strong> Der Anomalie-Detector kann live demonstrieren, was ein ML-Modell schon damals geflasgt hätte. Das ist die Killer-Demo im Pitch.</div>
+  </div>
+</div>
+
+<!-- DAX 15 -->
+<div class="sec">DAX-15 — seit mehr als 25 Jahren im Index</div>
+<div class="co-grid">
+  <div class="co"><span class="co-name">Siemens</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">Allianz</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">BASF</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">Bayer</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">BMW</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">Deutsche Bank</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">Henkel</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">RWE</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">Volkswagen</span><span class="co-badge since88">seit 1988</span></div>
+  <div class="co"><span class="co-name">SAP</span><span class="co-badge since95">seit 1995</span></div>
+  <div class="co"><span class="co-name">Munich RE</span><span class="co-badge since95">seit 1996</span></div>
+  <div class="co"><span class="co-name">Deutsche Telekom</span><span class="co-badge since95">seit 1996</span></div>
+  <div class="co"><span class="co-name">Adidas</span><span class="co-badge since98">seit 1998</span></div>
+  <div class="co"><span class="co-name">Mercedes-Benz</span><span class="co-badge since98">seit 1998</span></div>
+  <div class="co"><span class="co-name">E.ON</span><span class="co-badge since00">seit 2000</span></div>
+</div>
+
+<!-- GOLD BOX -->
+<div class="hbox gold">
+  <div class="hbox-icon">⭐</div>
+  <div>
+    <div class="hbox-title">0% Missing Values im DAX-15 Kern (2006–2021)</div>
+    <div class="hbox-body">Alle 15 Unternehmen haben <strong>lückenlose Comp-Daten über 16 Jahre</strong>. Salary, STI, LTI, Equity, Pension — alles da. Das ist außergewöhnlich sauber für einen echten Datensatz. Wir können sofort anfangen zu bauen.</div>
+  </div>
+</div>
+</body>
+</html>
