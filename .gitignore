@@ -1,0 +1,216 @@
+# =============================================================================
+# VIRTUAL ENVIRONMENTS
+# =============================================================================
+.venv/
+venv/
+env/
+ENV/
+.env/
+virtualenv/
+.virtualenv/
+# Conda
+.conda/
+conda-env/
+
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+
+# Unit test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Type checking
+.mypy_cache/
+.pytype/
+.pyre/
+.dmypy.json
+
+# =============================================================================
+# DATA FILES
+# =============================================================================
+# Raw / processed data (usually too large for git — use DVC or similar)
+data/raw/
+data/processed/
+data/interim/
+data/external/
+
+# Common data formats
+*.csv
+*.tsv
+*.parquet
+*.feather
+*.arrow
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.json
+*.jsonl
+*.xml
+*.db
+*.sqlite
+*.sqlite3
+*.xls
+*.xlsx
+
+# Keep placeholder files that mark empty tracked folders
+!.gitkeep
+
+
+# =============================================================================
+# MODELS & ARTEFACTS
+# =============================================================================
+models/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.pb
+*.tflite
+*.joblib
+*.model
+*.bin
+*.weights
+*.h5
+
+
+# =============================================================================
+# NOTEBOOKS
+# =============================================================================
+# Strip notebook output before committing (use nbstripout or pre-commit hook)
+# Uncomment the line below to ignore notebooks entirely instead:
+# *.ipynb
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Jupyter runtime
+.jupyter/
+profile_default/
+ipython_config.py
+
+
+# =============================================================================
+# SECRETS & CREDENTIALS
+# =============================================================================
+.env
+.env.*
+!.env.example       # keep the example template
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+config/secrets.yaml
+config/secrets.yml
+
+
+# =============================================================================
+# LOGS & OUTPUTS
+# =============================================================================
+logs/
+*.log
+*.out
+*.err
+runs/             # TensorBoard / MLflow run logs
+mlruns/           # MLflow
+wandb/            # Weights & Biases
+outputs/
+results/
+reports/figures/  # generated figures (regenerate from code)
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+*.eps
+
+
+# =============================================================================
+# IDE & EDITOR
+# =============================================================================
+# VS Code
+.vscode/
+!.vscode/extensions.json   # keep recommended extensions list
+
+# PyCharm / JetBrains
+.idea/
+*.iml
+*.iws
+
+# Spyder
+.spyderproject.cfg
+.spyproject/
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+
+# =============================================================================
+# OS FILES
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+
+# =============================================================================
+# CLOUD & INFRA
+# =============================================================================
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# DVC (Data Version Control) — keep config, ignore cache
+.dvc/cache/
+.dvc/tmp/
+
+# Docker
+*.env.docker
+
+\.~lock.*
+clustering/
+merge
