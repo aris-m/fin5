@@ -57,7 +57,6 @@ data/interim/
 data/external/
 
 # Common data formats
-*.csv
 *.tsv
 *.parquet
 *.feather
@@ -145,7 +144,6 @@ wandb/            # Weights & Biases
 outputs/
 results/
 reports/figures/  # generated figures (regenerate from code)
-*.png
 *.jpg
 *.jpeg
 *.svg
