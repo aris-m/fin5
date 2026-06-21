@@ -1,0 +1,44 @@
+company_shortname,sustainalytics_score,sustainalytics_risk_category,msci_rating,msci_score,cdp_score
+Adidas,18.2,Low,AA,6,A-
+Airbus,24.1,Medium,A,5,B
+Allianz,17.8,Low,AA,6,B+
+BASF,32.5,High,BBB,4,A-
+Bayer,41.2,High,BBB,4,B
+Beiersdorf,13.8,Low,AA,6,A
+BMW,21.3,Medium,A,5,A-
+Brenntag,18.9,Low,A,5,B+
+Commerzbank,22.1,Medium,A,5,B
+Continental,27.8,Medium,BBB,4,B
+Covestro,29.5,Medium,BBB,4,A-
+Daimler Truck,26.3,Medium,A,5,B
+Deutsche Bank,28.6,Medium,A,5,B+
+Deutsche Börse,13.2,Low,AA,6,B
+Deutsche Post,19.7,Low,AA,6,A-
+Deutsche Telekom,21.5,Medium,A,5,B+
+E.ON,25.9,Medium,A,5,A
+Fresenius,20.8,Medium,A,5,B+
+Fresenius Medical Care,19.2,Low,A,5,B
+Hannover Rück,12.8,Low,AAA,7,B
+Heidelberg Materials,37.5,High,BBB,4,B+
+Heidelberg Cement,37.5,High,BBB,4,B+
+Henkel,16.3,Low,AAA,7,A
+Infineon,15.7,Low,AA,6,A
+Mercedes-Benz,24.2,Medium,BBB,4,A-
+MTU,19.8,Low,A,5,B
+Munich RE,14.1,Low,AAA,7,B+
+Porsche AG,24.5,Medium,BBB,4,B
+Porsche SE,24.5,Medium,BBB,4,B
+Porsche Automobil Holding,24.5,Medium,BBB,4,B
+Porsche,24.5,Medium,BBB,4,B
+Qiagen,13.9,Low,A,5,B
+RWE,34.8,High,BBB,4,A
+Rheinmetall,38.1,High,BB,3,C
+SAP,11.2,Low,AAA,7,A
+Sartorius,14.6,Low,AA,6,B+
+Siemens,15.4,Low,AAA,7,A
+Siemens Energy,28.9,Medium,A,5,A-
+Siemens Healthineers,16.8,Low,AA,6,B+
+Symrise,17.4,Low,AA,6,A-
+Volkswagen,35.2,High,BBB,4,A-
+Vonovia,15.8,Low,AA,6,B
+Zalando,13.5,Low,A,5,B+
