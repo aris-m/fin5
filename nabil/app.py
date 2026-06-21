@@ -2898,7 +2898,9 @@ def show_predictor():
     col_in, col_out = st.columns([2, 3], gap="large")
 
     with col_in:
-        st.markdown(sec_html("Company Characteristics", "Fill in the fields below — all inputs feed directly into the OLS model"), unsafe_allow_html=True)
+        st.markdown(f"""<div style="background:white;border-radius:14px;padding:18px 20px 4px 20px;border:1px solid #e2e8f0;box-shadow:0 2px 10px rgba(0,0,0,.04);margin-bottom:0;">
+            {sec_html("Company Characteristics", "Fill in the fields below — all inputs feed directly into the OLS model")}
+        </div>""", unsafe_allow_html=True)
 
         with st.form("predictor_form"):
             p_sector = st.selectbox("Sector", _SECTORS_MU,
@@ -2935,11 +2937,11 @@ def show_predictor():
     # ── Compute ───────────────────────────────────────────────
     with col_out:
         if not submitted and "pred_result" not in st.session_state:
-            st.markdown(f"""<div style="background:#f8fafc;border:2px dashed #e2e8f0;border-radius:16px;
+            st.markdown(f"""<div style="background:white;border:2px dashed #94a3b8;border-radius:16px;
                 padding:48px 32px;text-align:center;margin-top:48px;">
                 <div style="font-size:2.5rem;margin-bottom:12px;">🧮</div>
                 <div style="font-size:1rem;font-weight:700;color:{NAVY};margin-bottom:6px;">Ready to Predict</div>
-                <div style="font-size:.83rem;color:{GRAY};">Fill in the company characteristics on the left and click <strong>Run Prediction</strong>.</div>
+                <div style="font-size:.83rem;color:#374151;">Fill in the company characteristics on the left and click <strong style="color:{NAVY};">Run Prediction</strong>.</div>
             </div>""", unsafe_allow_html=True)
         else:
             # Cache result in session state so it persists across re-runs without re-submit
@@ -3016,23 +3018,23 @@ def show_predictor():
             st.markdown(f"""<div style="background:linear-gradient(135deg,{NAVY} 0%,#1e3a5f 100%);border-radius:20px;padding:28px 30px;margin-bottom:16px;">
                 <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:4px;">
                     <div style="font-size:3.2rem;font-weight:900;color:white;letter-spacing:-2px;line-height:1;">€{point/1000:.2f}M</div>
-                    <div style="font-size:.85rem;color:#94a3b8;margin-bottom:8px;">total board comp</div>
+                    <div style="font-size:.85rem;color:#cbd5e1;margin-bottom:8px;">total board comp</div>
                 </div>
-                <div style="font-size:.82rem;color:#64748b;margin-bottom:16px;">
-                    80% Prediction Interval: <span style="color:#94a3b8;font-weight:600;">€{low/1000:.2f}M – €{high/1000:.2f}M</span>
+                <div style="font-size:.82rem;color:#94a3b8;margin-bottom:16px;">
+                    80% Prediction Interval: <span style="color:white;font-weight:600;">€{low/1000:.2f}M – €{high/1000:.2f}M</span>
                 </div>
                 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-                    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px;text-align:center;">
+                    <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;text-align:center;">
                         <div style="font-size:1.25rem;font-weight:800;color:white;">€{per_exec:.0f}K</div>
-                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;">per exec</div>
+                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;font-weight:600;">per exec</div>
                     </div>
-                    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px;text-align:center;">
+                    <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;text-align:center;">
                         <div style="font-size:1.25rem;font-weight:800;color:{t_col_s};">{vs_sector:+.0f}%</div>
-                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;">vs. sector median</div>
+                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;font-weight:600;">vs. sector median</div>
                     </div>
-                    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px;text-align:center;">
+                    <div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;text-align:center;">
                         <div style="font-size:1.25rem;font-weight:800;color:white;">{vs_dax:+.0f}%</div>
-                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;">vs. DAX median</div>
+                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;font-weight:600;">vs. DAX median</div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -3182,8 +3184,8 @@ def show_predictor():
             ]
             rows_h = "".join([f"""<tr>
                 <td style="padding:8px 12px;font-weight:600;color:{NAVY};font-size:.82rem;border-bottom:1px solid #f1f5f9;">{a}</td>
-                <td style="padding:8px 12px;color:#374151;font-size:.82rem;border-bottom:1px solid #f1f5f9;">{b}</td>
-                <td style="padding:8px 12px;color:{GRAY};font-size:.78rem;border-bottom:1px solid #f1f5f9;font-family:monospace;">{c}</td>
+                <td style="padding:8px 12px;color:#111827;font-size:.82rem;border-bottom:1px solid #f1f5f9;">{b}</td>
+                <td style="padding:8px 12px;color:#374151;font-size:.78rem;border-bottom:1px solid #f1f5f9;font-family:monospace;">{c}</td>
             </tr>""" for a, b, c in inp_rows])
             st.markdown(f"""<div style="background:white;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
                 <table style="width:100%;border-collapse:collapse;">
