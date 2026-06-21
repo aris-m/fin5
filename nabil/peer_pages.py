@@ -379,11 +379,11 @@ def show_gbr_predictor(nav_fn=None):
     with sc3:
         pred_index = st.selectbox("Index", sorted(peer_df[INDEX_COL].unique()), key="gbr_index")
 
+    # Auto-compute firm size as sector/index median — no user-facing slider
     mask=(peer_df["sector"]==pred_sector)&(peer_df[INDEX_COL]==pred_index)
-    med_size=peer_df.loc[mask,SIZE_COL].median()
-    if pd.isna(med_size): med_size=peer_df[SIZE_COL].median()
-    pred_size = st.slider("Firm Size Score", float(peer_df[SIZE_COL].min()),
-                           float(peer_df[SIZE_COL].max()), float(med_size), 0.05, key="gbr_size")
+    pred_size=peer_df.loc[mask,SIZE_COL].median()
+    if pd.isna(pred_size): pred_size=peer_df[SIZE_COL].median()
+    pred_size=float(pred_size)
     st.divider()
 
     roles = sorted(peer_df["role"].dropna().unique())
