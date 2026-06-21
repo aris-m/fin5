@@ -225,9 +225,14 @@ def load_data():
     if pe.exists():
         ext_esg = pd.read_csv(pe)
 
-    return df, coefs, anomaly_u, esg, ext_esg, mu
+    esg_raw = pd.DataFrame()
+    pr = BASE / "esg_2022_2024.csv"
+    if pr.exists():
+        esg_raw = pd.read_csv(pr)
 
-df, coefs, anomaly_u, esg, ext_esg, mu = load_data()
+    return df, coefs, anomaly_u, esg, ext_esg, mu, esg_raw
+
+df, coefs, anomaly_u, esg, ext_esg, mu, esg_raw = load_data()
 COMPANIES  = sorted(esg["company_shortname"].unique()) if len(esg) > 0 else sorted(mu["company_shortname"].unique())
 MODEL_COS  = set(df["company_shortname"].unique())          # 54 companies with rich features
 MU_COS     = set(mu["company_shortname"].unique())          # 54 companies with predictions
@@ -238,6 +243,22 @@ YEARS_ALL  = sorted(set(YEARS_MU + YEARS_ESG))             # 2007–2024 (union)
 MODEL_YEAR_MAX = max(YEARS_MU)                              # 2024 — full model coverage
 FEATURES_YEAR_MAX = max(YEARS_M)                            # 2024 — features cover full range
 COMP_DATA_MAX = 2021                                        # actual comp amounts available through 2021
+
+# ── ESG PAY COUNTS (from manually curated esg_2022_2024.csv) ──
+# A company "has ESG pay" if it embeds at least one E, S, or G criterion
+# in its executive compensation structure (STI or LTI), per 2022 DGAP disclosures.
+if len(esg_raw) > 0:
+    _esg_has = (
+        (esg_raw["dummy_environmental"] == 1) |
+        (esg_raw["dummy_social"] == 1) |
+        (esg_raw["dummy_governance"] == 1)
+    )
+    N_ESG_PAY        = int(_esg_has.sum())
+    N_ESG_COMPANIES  = int(esg_raw["cnameshort"].nunique())
+    PCT_NO_ESG       = round((N_ESG_COMPANIES - N_ESG_PAY) / N_ESG_COMPANIES * 100)
+    PCT_ESG          = 100 - PCT_NO_ESG
+else:
+    N_ESG_PAY = 39; N_ESG_COMPANIES = 40; PCT_NO_ESG = 2; PCT_ESG = 98
 
 # ── SESSION STATE ─────────────────────────────────────────────
 _defaults = {"screen":"landing","module":None,
@@ -450,7 +471,7 @@ def show_landing():
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
                 <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px 22px;text-align:center;min-width:90px;">
-                    <div style="font-size:2.4rem;font-weight:900;color:{ORANGE};letter-spacing:-1px;line-height:1;">16<span style="font-size:1.2rem;color:#64748b;">/43</span></div>
+                    <div style="font-size:2.4rem;font-weight:900;color:{ORANGE};letter-spacing:-1px;line-height:1;">{N_ESG_PAY}<span style="font-size:1.2rem;color:#64748b;">/{N_ESG_COMPANIES}</span></div>
                     <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">DAX with ESG-Pay</div>
                 </div>
                 <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px 22px;text-align:center;min-width:90px;">
@@ -462,8 +483,8 @@ def show_landing():
                     <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">Max Pay Ratio</div>
                 </div>
                 <div style="background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.25);border-radius:16px;padding:16px 22px;text-align:center;min-width:90px;">
-                    <div style="font-size:2.4rem;font-weight:900;color:{ORANGE};letter-spacing:-1px;line-height:1;">63%</div>
-                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">Pay 0% on ESG</div>
+                    <div style="font-size:2.4rem;font-weight:900;color:{ORANGE};letter-spacing:-1px;line-height:1;">{PCT_ESG}%</div>
+                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">With ESG in Pay</div>
                 </div>
             </div>
         </div>
@@ -1322,8 +1343,10 @@ def show_esg():
     st.markdown(f"""<div class="insight">
         <strong>ESG & CSRD:</strong> The EU Corporate Sustainability Reporting Directive (CSRD) has been
         mandatory since 2025. It requires explicit ESG compensation targets, verifiable KPI texts and
-        disclosure of the incentive structure. Only <strong>16 of 43 DAX companies (37%)</strong> meet
-        this standard. {sel_co} currently has <strong>{esg_tot:.0f}% ESG share</strong> in STI+LTI.
+        disclosure of the incentive structure.
+        <strong>{N_ESG_PAY} of {N_ESG_COMPANIES} DAX companies ({PCT_ESG}%)</strong> embed at least one
+        Environmental, Social, or Governance criterion in executive compensation (source: 2022 DGAP
+        compensation disclosures). {sel_co} currently has <strong>{esg_tot:.0f}% ESG share</strong> in STI+LTI.
     </div>""", unsafe_allow_html=True)
 
     # KPIs
