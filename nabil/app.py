@@ -1262,6 +1262,8 @@ def show_anomaly():
 def show_esg():
     sidebar_nav("landing", "← Back to Home")
     sel_co, sel_year = st.session_state.company, st.session_state.year
+    in_model = sel_co in MODEL_COS
+    co_df    = df[df["company_shortname"] == sel_co].sort_values("year")
     co_esg = esg[esg["company_shortname"] == sel_co].sort_values("year") if len(esg) > 0 else pd.DataFrame()
 
     # For ESG metrics: prefer selected year; fall back to latest available
@@ -1284,6 +1286,34 @@ def show_esg():
     fem_pct = esg_val("female_pct")
     w_ratio = esg_val("ceo_worker_ratio")
     esg_tot = (sti_esg or 0) + (lti_esg or 0)
+    gov_sc_esg = float(co_df["anomaly_score_pct"].mean()) if in_model and "anomaly_score_pct" in co_df.columns and co_df["anomaly_score_pct"].notna().any() else None
+
+    # Pre-compute CSRD score for section card
+    _kpi_rows_pre = co_esg_yr[co_esg_yr[["stipi1","stipi2","ltipi1","ltipi2"]].notna().any(axis=1)] if len(co_esg_yr) > 0 else pd.DataFrame()
+    if len(_kpi_rows_pre) == 0:
+        _kpi_rows_pre = co_esg[co_esg[["stipi1","stipi2","ltipi1","ltipi2"]].notna().any(axis=1)] if len(co_esg) > 0 else pd.DataFrame()
+    _OPACITY = {"BMW","Volkswagen","Mercedes-Benz"}
+    _score_pre = sum([
+        sti_esg is not None and sti_esg > 0,
+        lti_esg is not None and lti_esg > 0,
+        len(_kpi_rows_pre) > 0 and sel_co not in _OPACITY,
+        sel_co not in _OPACITY,
+        fem_pct is not None and fem_pct >= 30,
+    ])
+
+    # Pre-compute wash_risk for section card
+    _wash_verdict = "—"
+    if len(ext_esg) > 0:
+        _co_ext = ext_esg[ext_esg["company_shortname"] == sel_co]
+        if len(_co_ext) > 0:
+            _er = _co_ext.iloc[0]
+            _sust_inv = max(0, 100 - (float(_er["sustainalytics_score"]) / 50) * 100)
+            _pay_esg = min(100, esg_tot * 2.0) if sti_esg is not None else None
+            if _pay_esg is None:  _wash_verdict = "⚠ Opacity"
+            elif _pay_esg >= 20 and _sust_inv >= 60: _wash_verdict = "✅ Aligned"
+            elif _pay_esg < 10 and _sust_inv >= 65:  _wash_verdict = "🚨 Risk"
+            elif _pay_esg >= 20 and _sust_inv < 50:  _wash_verdict = "⚠ Gap"
+            else:                                     _wash_verdict = "ℹ In Progress"
 
     # Warn if showing fallback year
     if actual_esg_year != sel_year:
@@ -1297,7 +1327,7 @@ def show_esg():
     </div>""", unsafe_allow_html=True)
 
     # KPIs
-    k1,k2,k3,k4 = st.columns(4)
+    k1,k2,k3,k4,k5 = st.columns(5)
     with k1: st.markdown(kpi_html(f"{sti_esg:.0f}%" if sti_esg else "0%", "ESG Share STI", "✅ CSRD-relevant" if sti_esg and sti_esg>0 else "❌ No ESG", ORANGE if sti_esg and sti_esg>0 else "#94a3b8", GREEN if sti_esg and sti_esg>0 else RED,
         info="Share of the Short-Term Incentive (annual bonus) tied to ESG/sustainability KPIs. Under CSRD, companies must disclose and justify sustainability links in executive pay. Zero = no short-term accountability for ESG performance."), unsafe_allow_html=True)
     with k2: st.markdown(kpi_html(f"{lti_esg:.0f}%" if lti_esg else "0%", "ESG Share LTI", "Long-term sustainability targets", ORANGE if lti_esg and lti_esg>0 else "#94a3b8",
@@ -1306,310 +1336,323 @@ def show_esg():
         info="Percentage of female executive board members. German law (ARUG II) mandates ≥30% for supervisory boards of large listed companies. Research shows board diversity correlates with better risk management."), unsafe_allow_html=True)
     with k4: st.markdown(kpi_html(f"{w_ratio:.0f}x" if w_ratio else "—", "Exec/Worker Pay", "⚠ Very High" if w_ratio and w_ratio>60 else "Income Inequality", RED if w_ratio and w_ratio>60 else NAVY, RED if w_ratio and w_ratio>60 else GRAY,
         info="Ratio of CEO total compensation to the median employee wage. A high ratio (>60x) signals internal pay inequality and is increasingly scrutinized by ESG raters and employees. Required disclosure under CSRD."), unsafe_allow_html=True)
+    with k5: st.markdown(kpi_html(f"{gov_sc_esg:.0f}/100" if gov_sc_esg else "—", "Governance Risk",
+        "⚠ High Risk" if gov_sc_esg and gov_sc_esg > 60 else "✅ Normal",
+        risk_color(gov_sc_esg or 0), risk_color(gov_sc_esg or 0),
+        info="Composite governance risk score (0–100) averaged over all available years. A high score signals structural pay anomalies that may contradict the company's ESG claims."), unsafe_allow_html=True)
 
-    # DAX Bubble Chart
-    st.markdown('<div class="sec"><div class="sec-title">DAX Overview: Who Actually Integrates ESG?</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">X/Y = ESG share STI/LTI · Dot size = avg. compensation · Orange = with ESG · Grey = without ESG</div></div>', unsafe_allow_html=True)
+    # ── Section panel ───────────────────────────────────────────────
+    _sec = st.session_state.get("esg_section", None)
 
-    if len(esg) > 0:
-        recent = esg[esg["year"]>=2022]
-        bub = recent.groupby("company_shortname").agg(
-            sti=("sti_esg_share","mean"), lti=("lti_esg_share","mean"),
-            avg_comp=("avg_comp","mean")).reset_index().fillna(0)
-        bub["has_esg"] = (bub["sti"]+bub["lti"]) > 0
-        bub["is_sel"]  = bub["company_shortname"] == sel_co
+    if _sec is None:
+        st.markdown('<div class="sec"><div class="sec-title">Dive Deeper — Select an Analysis Area</div><div class="sec-sub">Hover ⓘ on any metric above for context · click a card to explore</div></div>', unsafe_allow_html=True)
+        sc1, sc2, sc3 = st.columns(3, gap="medium")
+        with sc1:
+            _ec = ORANGE if esg_tot > 0 else RED
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#f0fdf4;">🌱</div>
+                <div class="mod-title">ESG Integration</div>
+                <div class="mod-desc">DAX ESG bubble map — who actually ties pay to ESG KPIs? Plus compensation report KPI texts.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_ec};">{esg_tot:.0f}%</div>
+                    <div class="mod-statlbl">ESG in Pay (STI+LTI)</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ ESG Integration", key="esg_s1", use_container_width=True):
+                st.session_state["esg_section"] = "esg_int"; st.rerun()
+        with sc2:
+            _sc_col = GREEN if _score_pre >= 4 else AMBER if _score_pre >= 3 else RED
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#eff6ff;">📋</div>
+                <div class="mod-title">CSRD & Equity</div>
+                <div class="mod-desc">CSRD compliance checklist (5 criteria) plus DAX-wide gender board diversity & CEO/worker ratio charts.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_sc_col};">{_score_pre}/5</div>
+                    <div class="mod-statlbl">CSRD Compliance Score</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ CSRD & Equity", key="esg_s2", use_container_width=True):
+                st.session_state["esg_section"] = "csrd"; st.rerun()
+        with sc3:
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#fff7ed;">🔬</div>
+                <div class="mod-title">Pay-Washing Check</div>
+                <div class="mod-desc">Compares internal ESG-pay link against Sustainalytics & MSCI ratings. DAX quadrant heatmap.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{RED if '🚨' in _wash_verdict else AMBER if '⚠' in _wash_verdict else GREEN};">{_wash_verdict}</div>
+                    <div class="mod-statlbl">Pay-Washing Verdict</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ Pay-Washing Check", key="esg_s3", use_container_width=True):
+                st.session_state["esg_section"] = "pay_wash"; st.rerun()
 
-        fig = go.Figure()
-        for has, color, name in [(False,"#cbd5e1","No ESG Link"),(True,ORANGE,"With ESG Link")]:
-            d = bub[~bub["is_sel"] & (bub["has_esg"]==has)]
-            fig.add_trace(go.Scatter(x=d["sti"], y=d["lti"], mode="markers+text",
-                marker=dict(size=d["avg_comp"].clip(50,2000).apply(lambda v: max(8,min(26,v/80))),
-                    color=color, opacity=0.7, line=dict(width=1, color="white")),
-                text=d["company_shortname"], textposition="top center",
-                textfont=dict(size=8, color="#94a3b8"),
-                hovertemplate="<b>%{text}</b><br>STI: %{x:.0f}% · LTI: %{y:.0f}%<extra></extra>",
-                showlegend=True, name=name))
-        sel_row = bub[bub["is_sel"]]
-        if len(sel_row)>0:
-            r = sel_row.iloc[0]
-            fig.add_trace(go.Scatter(x=[r["sti"]], y=[r["lti"]], mode="markers+text",
-                marker=dict(size=max(18,min(34,r["avg_comp"]/70)), color=NAVY, line=dict(width=3,color=ORANGE)),
-                text=[f"▶ {sel_co}"], textposition="top center",
-                textfont=dict(size=11, color=NAVY),
-                hovertemplate=f"<b>{sel_co}</b><extra></extra>",
-                showlegend=True, name=f"▶ {sel_co}"))
-        for x,y,txt,col in [(45,45,"ESG Leader","#15803d"),(3,45,"LTI-focused","#1d4ed8"),(45,3,"STI-focused",AMBER),(3,3,"No ESG Link",RED)]:
-            fig.add_annotation(x=x, y=y, text=txt, showarrow=False, font=dict(color=col,size=9), opacity=0.5)
-        fig.add_hline(y=20,line_dash="dot",line_color="#e2e8f0",line_width=1)
-        fig.add_vline(x=20,line_dash="dot",line_color="#e2e8f0",line_width=1)
-        fig.update_layout(height=420, margin=dict(l=0,r=0,t=10,b=0),
-            plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="ESG Share STI (%)", range=[-5,68], gridcolor=GRAYLT),
-            yaxis=dict(title="ESG Share LTI (%)", range=[-5,68], gridcolor=GRAYLT),
-            hovermode="closest",
-            legend=dict(orientation="h", yanchor="bottom", y=1.01))
-        st.plotly_chart(fig, use_container_width=True)
+    else:
+        if st.button("← Back to Overview", key="esg_back"):
+            st.session_state["esg_section"] = None; st.rerun()
 
-    col_kpi, col_csrd = st.columns([3, 2], gap="large")
-
-    with col_kpi:
-        st.markdown(f"**KPI Texts from the Compensation Report — {sel_co} ({actual_esg_year})**")
-        # Use year-specific row first; else search all years
-        co_kpi_rows = co_esg_yr[co_esg_yr[["stipi1","stipi2","ltipi1","ltipi2"]].notna().any(axis=1)] if len(co_esg_yr)>0 else pd.DataFrame()
-        if len(co_kpi_rows) == 0:
-            co_kpi_rows = co_esg[co_esg[["stipi1","stipi2","ltipi1","ltipi2"]].notna().any(axis=1)] if len(co_esg)>0 else pd.DataFrame()
-        CAT = {"Environmental":("#dcfce7","#15803d","🌍"),"Social":("#dbeafe","#1d4ed8","🤝"),
-               "Governance":("#f3e8ff","#6d28d9","🏛"),"Financial":("#fef9c3","#92400e","💰")}
-        if len(co_kpi_rows) > 0:
-            latest = co_kpi_rows.iloc[-1]
-            for lbl, txt, cat, w in [("STI-KPI 1",latest.get("stipi1"),latest.get("stipi1_cat"),latest.get("stipi1weight_num")),
-                                      ("STI-KPI 2",latest.get("stipi2"),latest.get("stipi2_cat"),latest.get("stipi2weight_num")),
-                                      ("LTI-KPI 1",latest.get("ltipi1"),latest.get("ltipi1_cat"),latest.get("ltipi1weight_num")),
-                                      ("LTI-KPI 2",latest.get("ltipi2"),latest.get("ltipi2_cat"),latest.get("ltipi2weight_num"))]:
-                if pd.notna(txt) and str(txt).strip():
-                    bg,fg,icon = CAT.get(str(cat),("#f1f5f9","#475569","💰"))
-                    w_s = f"<span style='font-weight:700;color:{fg};float:right;'>{w:.0f}%</span>" if pd.notna(w) else ""
-                    st.markdown(f"""<div class="kpi-tile" style="background:{bg};">
-                        <div style="font-size:.7rem;font-weight:700;color:{fg};text-transform:uppercase;letter-spacing:.05em;">{icon} {cat} · {lbl} {w_s}</div>
-                        <div style="font-size:.84rem;color:#1e293b;margin-top:4px;line-height:1.4;">{str(txt)[:130]}</div>
+        if _sec == "esg_int":
+            st.markdown('<div class="sec"><div class="sec-title">DAX Overview: Who Actually Integrates ESG?</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">X/Y = ESG share STI/LTI · Dot size = avg. compensation · Orange = with ESG · Grey = without ESG</div></div>', unsafe_allow_html=True)
+            if len(esg) > 0:
+                recent = esg[esg["year"]>=2022]
+                bub = recent.groupby("company_shortname").agg(
+                    sti=("sti_esg_share","mean"), lti=("lti_esg_share","mean"),
+                    avg_comp=("avg_comp","mean")).reset_index().fillna(0)
+                bub["has_esg"] = (bub["sti"]+bub["lti"]) > 0
+                bub["is_sel"]  = bub["company_shortname"] == sel_co
+                fig = go.Figure()
+                for has, color, name in [(False,"#cbd5e1","No ESG Link"),(True,ORANGE,"With ESG Link")]:
+                    d = bub[~bub["is_sel"] & (bub["has_esg"]==has)]
+                    fig.add_trace(go.Scatter(x=d["sti"], y=d["lti"], mode="markers+text",
+                        marker=dict(size=d["avg_comp"].clip(50,2000).apply(lambda v: max(8,min(26,v/80))),
+                            color=color, opacity=0.7, line=dict(width=1, color="white")),
+                        text=d["company_shortname"], textposition="top center",
+                        textfont=dict(size=8, color="#94a3b8"),
+                        hovertemplate="<b>%{text}</b><br>STI: %{x:.0f}% · LTI: %{y:.0f}%<extra></extra>",
+                        showlegend=True, name=name))
+                sel_row = bub[bub["is_sel"]]
+                if len(sel_row)>0:
+                    r = sel_row.iloc[0]
+                    fig.add_trace(go.Scatter(x=[r["sti"]], y=[r["lti"]], mode="markers+text",
+                        marker=dict(size=max(18,min(34,r["avg_comp"]/70)), color=NAVY, line=dict(width=3,color=ORANGE)),
+                        text=[f"▶ {sel_co}"], textposition="top center",
+                        textfont=dict(size=11, color=NAVY),
+                        hovertemplate=f"<b>{sel_co}</b><extra></extra>",
+                        showlegend=True, name=f"▶ {sel_co}"))
+                for x,y,txt,col in [(45,45,"ESG Leader","#15803d"),(3,45,"LTI-focused","#1d4ed8"),(45,3,"STI-focused",AMBER),(3,3,"No ESG Link",RED)]:
+                    fig.add_annotation(x=x, y=y, text=txt, showarrow=False, font=dict(color=col,size=9), opacity=0.5)
+                fig.add_hline(y=20,line_dash="dot",line_color="#e2e8f0",line_width=1)
+                fig.add_vline(x=20,line_dash="dot",line_color="#e2e8f0",line_width=1)
+                fig.update_layout(height=420, margin=dict(l=0,r=0,t=10,b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(title="ESG Share STI (%)", range=[-5,68], gridcolor=GRAYLT),
+                    yaxis=dict(title="ESG Share LTI (%)", range=[-5,68], gridcolor=GRAYLT),
+                    hovermode="closest",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.01))
+                st.plotly_chart(fig, use_container_width=True)
+            co_kpi_rows = _kpi_rows_pre
+            st.markdown(f"**KPI Texts from the Compensation Report — {sel_co} ({actual_esg_year})**")
+            CAT = {"Environmental":("#dcfce7","#15803d","🌍"),"Social":("#dbeafe","#1d4ed8","🤝"),
+                   "Governance":("#f3e8ff","#6d28d9","🏛"),"Financial":("#fef9c3","#92400e","💰")}
+            if len(co_kpi_rows) > 0:
+                latest = co_kpi_rows.iloc[-1]
+                for lbl, txt, cat, w in [("STI-KPI 1",latest.get("stipi1"),latest.get("stipi1_cat"),latest.get("stipi1weight_num")),
+                                          ("STI-KPI 2",latest.get("stipi2"),latest.get("stipi2_cat"),latest.get("stipi2weight_num")),
+                                          ("LTI-KPI 1",latest.get("ltipi1"),latest.get("ltipi1_cat"),latest.get("ltipi1weight_num")),
+                                          ("LTI-KPI 2",latest.get("ltipi2"),latest.get("ltipi2_cat"),latest.get("ltipi2weight_num"))]:
+                    if pd.notna(txt) and str(txt).strip():
+                        bg,fg,icon = CAT.get(str(cat),("#f1f5f9","#475569","💰"))
+                        w_s = f"<span style='font-weight:700;color:{fg};float:right;'>{w:.0f}%</span>" if pd.notna(w) else ""
+                        st.markdown(f"""<div class="kpi-tile" style="background:{bg};">
+                            <div style="font-size:.7rem;font-weight:700;color:{fg};text-transform:uppercase;letter-spacing:.05em;">{icon} {cat} · {lbl} {w_s}</div>
+                            <div style="font-size:.84rem;color:#1e293b;margin-top:4px;line-height:1.4;">{str(txt)[:130]}</div>
+                        </div>""", unsafe_allow_html=True)
+                if sel_co in _OPACITY:
+                    st.markdown(f"""<div class="flag-red">
+                        <strong>⚠️ Disclosure Opacity:</strong> {sel_co} uses abstract KPI terms —
+                        external ESG content cannot be verified. This is exactly what CSRD addresses.
                     </div>""", unsafe_allow_html=True)
-            if sel_co in {"BMW","Volkswagen","Mercedes-Benz"}:
-                st.markdown(f"""<div class="flag-red">
-                    <strong>⚠️ Disclosure Opacity:</strong> {sel_co} uses abstract KPI terms —
-                    external ESG content cannot be verified. This is exactly what CSRD addresses.
-                </div>""", unsafe_allow_html=True)
-        else:
-            st.info("KPI texts available for 2022–2024. No text data collected for earlier years.")
-
-    with col_csrd:
-        st.markdown(f"**CSRD Compliance Check ({actual_esg_year})**")
-        st.caption("EU Corporate Sustainability Reporting Directive — mandatory from 2025")
-        OPACITY = {"BMW","Volkswagen","Mercedes-Benz"}
-        has_kpi_text = len(co_kpi_rows) > 0
-        checks = [
-            ("ESG target anchored in STI",          sti_esg is not None and sti_esg > 0),
-            ("ESG target anchored in LTI",          lti_esg is not None and lti_esg > 0),
-            ("KPI text publicly verifiable",        has_kpi_text and sel_co not in OPACITY),
-            ("No abstract blanket KPIs",            sel_co not in OPACITY),
-            ("Female quota ≥30% (ARUG II)",         fem_pct is not None and fem_pct >= 30),
-        ]
-        score = sum(1 for _,ok in checks if ok)
-        s_fg  = "#4ade80" if score>=4 else "#fbbf24" if score>=3 else "#f87171"
-        s_bg  = "#14532d" if score>=4 else "#713f12" if score>=3 else "#7f1d1d"
-        s_lbl = "Compliant" if score>=4 else "Partial" if score>=3 else "Not Compliant"
-        st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-bottom:14px;">
-            <div style="font-size:2.6rem;font-weight:800;color:{s_fg};line-height:1;">{score}<span style="font-size:1.2rem;color:#475569;">/5</span></div>
-            <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">CSRD-Score</div>
-            <div style="background:{s_bg};border-radius:6px;padding:3px 12px;display:inline-block;margin-top:8px;font-size:.78rem;font-weight:700;color:{s_fg};">{s_lbl}</div>
-        </div>""", unsafe_allow_html=True)
-        for label, ok in checks:
-            icon = "✅" if ok else "❌"
-            col  = "#1e293b" if ok else RED
-            st.markdown(f'<div style="font-size:.82rem;color:{col};padding:6px 0;border-bottom:1px solid #f1f5f9;">{icon} {label}</div>', unsafe_allow_html=True)
-
-    # Pay Equity
-    st.markdown('<div class="sec"><div class="sec-title">Pay Equity — Gender &amp; CEO/Worker Ratio</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Female share vs. ARUG II target · Income inequality across DAX</div></div>', unsafe_allow_html=True)
-    col_f, col_r2 = st.columns(2)
-    with col_f:
-        latest_fem = (esg.sort_values("year").groupby("company_shortname").last()
-                      .reset_index()[["company_shortname","female_pct"]]
-                      .sort_values("female_pct", ascending=True).dropna())
-        colors_f = [ORANGE if c==sel_co else ("#4ade80" if v>=30 else "#fbbf24" if v>=20 else "#f87171") for c,v in zip(latest_fem["company_shortname"],latest_fem["female_pct"])]
-        fig_f = go.Figure(go.Bar(x=latest_fem["female_pct"], y=latest_fem["company_shortname"],
-            orientation="h", marker_color=colors_f,
-            hovertemplate="%{y}: %{x:.1f}%<extra></extra>"))
-        fig_f.add_vline(x=30, line_dash="dash", line_color=GREEN, line_width=1.5,
-            annotation_text="30% (ARUG II)", annotation_font=dict(size=8, color=GREEN))
-        fig_f.update_layout(height=480, margin=dict(l=0,r=0,t=10,b=0),
-            plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="Female Share (%)", range=[0,65], gridcolor=GRAYLT),
-            yaxis=dict(tickfont=dict(size=9)))
-        st.plotly_chart(fig_f, use_container_width=True)
-    with col_r2:
-        latest_rat = (esg.sort_values("year").groupby("company_shortname").last()
-                      .reset_index()[["company_shortname","ceo_worker_ratio"]]
-                      .sort_values("ceo_worker_ratio", ascending=True).dropna())
-        colors_r = [ORANGE if c==sel_co else (RED if v>65 else AMBER if v>45 else "#94a3b8") for c,v in zip(latest_rat["company_shortname"],latest_rat["ceo_worker_ratio"])]
-        fig_r = go.Figure(go.Bar(x=latest_rat["ceo_worker_ratio"], y=latest_rat["company_shortname"],
-            orientation="h", marker_color=colors_r,
-            text=[f"{v:.0f}x" for v in latest_rat["ceo_worker_ratio"]],
-            textposition="outside", textfont=dict(size=8),
-            hovertemplate="%{y}: %{x:.0f}x<extra></extra>"))
-        med = latest_rat["ceo_worker_ratio"].median()
-        fig_r.add_vline(x=med, line_dash="dot", line_color=GRAY, line_width=1.5,
-            annotation_text=f"Median {med:.0f}x", annotation_font=dict(size=8, color=GRAY))
-        fig_r.update_layout(height=480, margin=dict(l=0,r=0,t=10,b=0),
-            plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="Exec/Worker Pay (x)", gridcolor=GRAYLT),
-            yaxis=dict(tickfont=dict(size=9)))
-        st.plotly_chart(fig_r, use_container_width=True)
-
-    # ── ESG Pay-Washing Detector ──────────────────────────────────
-    st.markdown('<div class="sec"><div class="sec-title">🔬 External ESG Validation — Pay-Washing Detector</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Compares our derived ESG-pay link with Sustainalytics risk rating & MSCI ESG score</div></div>', unsafe_allow_html=True)
-
-    if len(ext_esg) > 0:
-        co_ext = ext_esg[ext_esg["company_shortname"] == sel_co]
-        if len(co_ext) > 0:
-            ext_row = co_ext.iloc[0]
-            sust_score  = float(ext_row["sustainalytics_score"])
-            sust_cat    = str(ext_row["sustainalytics_risk_category"])
-            msci_rating = str(ext_row["msci_rating"])
-            msci_score  = int(ext_row["msci_score"])
-            cdp_score   = str(ext_row.get("cdp_score", "—"))
-            msci_score_norm = (msci_score / 7) * 100  # normalize to 0-100
-            sust_score_inv  = max(0, 100 - (sust_score / 50) * 100)  # invert (lower risk = higher score)
-
-            # ESG Pay Score: normalized 0-100
-            pay_esg_score = min(100, esg_tot * 2.0)  # 50% ESG in pay = 100 pts
-            if sti_esg is None:  # BMW opacity
-                pay_esg_score = None
-
-            sust_col = {"Negligible": GREEN, "Low": GREEN, "Medium": AMBER,
-                        "High": RED, "Severe": "#7f1d1d"}.get(sust_cat, GRAY)
-            msci_col = {"AAA": GREEN,"AA": GREEN,"A": "#4ade80","BBB": AMBER,
-                        "BB": AMBER,"B": RED,"CCC": RED}.get(msci_rating, GRAY)
-
-            # Determine Pay-Washing Risk
-            if pay_esg_score is None:
-                wash_risk = "opacity"
-            elif pay_esg_score >= 20 and sust_score_inv >= 60:
-                wash_risk = "aligned"
-            elif pay_esg_score < 10 and sust_score_inv >= 65:
-                wash_risk = "washing"  # high external score, low pay ESG = performative
-            elif pay_esg_score >= 20 and sust_score_inv < 50:
-                wash_risk = "disconnect"  # paying for ESG but still poor performer
             else:
-                wash_risk = "neutral"
+                st.info("KPI texts available for 2022–2024. No text data collected for earlier years.")
 
-            cA, cB, cC = st.columns([1, 1, 1], gap="large")
-            with cA:
-                st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
-                    <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">Sustainalytics Risk</div>
-                    <div style="font-size:2.6rem;font-weight:900;color:{sust_col};line-height:1;">{sust_score:.1f}</div>
-                    <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">/ 50 · {sust_cat} Risk</div>
-                    <div style="background:{sust_col}22;border:1px solid {sust_col}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{sust_col};">{"✓ Good" if sust_cat in ("Low","Negligible") else "⚠ Medium" if sust_cat=="Medium" else "✗ High"}</div>
-                </div>""", unsafe_allow_html=True)
-            with cB:
-                st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
-                    <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">MSCI ESG Rating</div>
-                    <div style="font-size:2.6rem;font-weight:900;color:{msci_col};line-height:1;">{msci_rating}</div>
-                    <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">MSCI ESG Leaders Index</div>
-                    <div style="background:{msci_col}22;border:1px solid {msci_col}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{msci_col};">{"AAA–A: Leader" if msci_score>=5 else "BBB: Average" if msci_score==4 else "BB–CCC: Laggard"}</div>
-                </div>""", unsafe_allow_html=True)
-            with cC:
-                if pay_esg_score is not None:
-                    pcolor = GREEN if pay_esg_score >= 25 else AMBER if pay_esg_score >= 10 else RED
-                    st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
-                        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">ExComp ESG-Pay Score</div>
-                        <div style="font-size:2.6rem;font-weight:900;color:{pcolor};line-height:1;">{pay_esg_score:.0f}</div>
-                        <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">/ 100 · derived from KPI analysis</div>
-                        <div style="background:{pcolor}22;border:1px solid {pcolor}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{pcolor};">{"ESG Payer" if pay_esg_score>=25 else "Low" if pay_esg_score>=5 else "No ESG Link"}</div>
-                    </div>""", unsafe_allow_html=True)
+        elif _sec == "csrd":
+            co_kpi_rows = _kpi_rows_pre
+            col_kpi, col_csrd = st.columns([3, 2], gap="large")
+            with col_kpi:
+                st.markdown(f"**KPI Texts from the Compensation Report — {sel_co} ({actual_esg_year})**")
+                CAT = {"Environmental":("#dcfce7","#15803d","🌍"),"Social":("#dbeafe","#1d4ed8","🤝"),
+                       "Governance":("#f3e8ff","#6d28d9","🏛"),"Financial":("#fef9c3","#92400e","💰")}
+                if len(co_kpi_rows) > 0:
+                    latest = co_kpi_rows.iloc[-1]
+                    for lbl, txt, cat, w in [("STI-KPI 1",latest.get("stipi1"),latest.get("stipi1_cat"),latest.get("stipi1weight_num")),
+                                              ("STI-KPI 2",latest.get("stipi2"),latest.get("stipi2_cat"),latest.get("stipi2weight_num")),
+                                              ("LTI-KPI 1",latest.get("ltipi1"),latest.get("ltipi1_cat"),latest.get("ltipi1weight_num")),
+                                              ("LTI-KPI 2",latest.get("ltipi2"),latest.get("ltipi2_cat"),latest.get("ltipi2weight_num"))]:
+                        if pd.notna(txt) and str(txt).strip():
+                            bg,fg,icon = CAT.get(str(cat),("#f1f5f9","#475569","💰"))
+                            w_s = f"<span style='font-weight:700;color:{fg};float:right;'>{w:.0f}%</span>" if pd.notna(w) else ""
+                            st.markdown(f"""<div class="kpi-tile" style="background:{bg};">
+                                <div style="font-size:.7rem;font-weight:700;color:{fg};text-transform:uppercase;letter-spacing:.05em;">{icon} {cat} · {lbl} {w_s}</div>
+                                <div style="font-size:.84rem;color:#1e293b;margin-top:4px;line-height:1.4;">{str(txt)[:130]}</div>
+                            </div>""", unsafe_allow_html=True)
+                    if sel_co in _OPACITY:
+                        st.markdown(f"""<div class="flag-red">
+                            <strong>⚠️ Disclosure Opacity:</strong> {sel_co} uses abstract KPI terms —
+                            external ESG content cannot be verified. This is exactly what CSRD addresses.
+                        </div>""", unsafe_allow_html=True)
                 else:
-                    st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
-                        <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">ExComp ESG-Pay Score</div>
-                        <div style="font-size:2.6rem;font-weight:900;color:{AMBER};line-height:1;">N/V</div>
-                        <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">Not Verifiable</div>
-                        <div style="background:{AMBER}22;border:1px solid {AMBER}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{AMBER};">⚠ Opacity</div>
-                    </div>""", unsafe_allow_html=True)
-
-            # Pay-Washing verdict
-            st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-            if wash_risk == "aligned":
-                st.markdown(f"""<div class="flag-green">
-                    <strong>✅ ESG-Pay Alignment:</strong> {sel_co} shows consistency between external ESG ratings
-                    (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}) and ESG pay integration ({esg_tot:.0f}% in pay).
-                    The compensation system supports the ESG leadership position.
+                    st.info("KPI texts available for 2022–2024. No text data collected for earlier years.")
+            with col_csrd:
+                st.markdown(f"**CSRD Compliance Check ({actual_esg_year})**")
+                st.caption("EU Corporate Sustainability Reporting Directive — mandatory from 2025")
+                has_kpi_text = len(co_kpi_rows) > 0
+                checks = [
+                    ("ESG target anchored in STI",    sti_esg is not None and sti_esg > 0),
+                    ("ESG target anchored in LTI",    lti_esg is not None and lti_esg > 0),
+                    ("KPI text publicly verifiable",  has_kpi_text and sel_co not in _OPACITY),
+                    ("No abstract blanket KPIs",      sel_co not in _OPACITY),
+                    ("Female quota ≥30% (ARUG II)",   fem_pct is not None and fem_pct >= 30),
+                ]
+                score = sum(1 for _,ok in checks if ok)
+                s_fg  = "#4ade80" if score>=4 else "#fbbf24" if score>=3 else "#f87171"
+                s_bg  = "#14532d" if score>=4 else "#713f12" if score>=3 else "#7f1d1d"
+                s_lbl = "Compliant" if score>=4 else "Partial" if score>=3 else "Not Compliant"
+                st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-bottom:14px;">
+                    <div style="font-size:2.6rem;font-weight:800;color:{s_fg};line-height:1;">{score}<span style="font-size:1.2rem;color:#475569;">/5</span></div>
+                    <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">CSRD-Score</div>
+                    <div style="background:{s_bg};border-radius:6px;padding:3px 12px;display:inline-block;margin-top:8px;font-size:.78rem;font-weight:700;color:{s_fg};">{s_lbl}</div>
                 </div>""", unsafe_allow_html=True)
-            elif wash_risk == "washing":
-                st.markdown(f"""<div class="flag-red">
-                    <strong>🚨 ESG Pay-Washing Risk:</strong> {sel_co} enjoys a strong external ESG rating
-                    (Sustainalytics: {sust_score:.1f} Low/Medium · MSCI: {msci_rating}), yet links
-                    <strong>0% of executive pay</strong> to ESG targets. External reputation without internal incentives —
-                    exactly what CSRD is designed to expose.
-                </div>""", unsafe_allow_html=True)
-            elif wash_risk == "disconnect":
-                st.markdown(f"""<div class="flag-amber">
-                    <strong>⚠ ESG Pay-Performance Gap:</strong> {sel_co} ties {esg_tot:.0f}% of pay
-                    to ESG targets (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}),
-                    yet still shows above-average ESG risk. Pay-for-ESG alone is not enough — target quality matters.
-                </div>""", unsafe_allow_html=True)
-            elif wash_risk == "opacity":
-                st.markdown(f"""<div class="flag-amber">
-                    <strong>⚠ Disclosure Opacity:</strong> {sel_co} uses abstract compensation terms —
-                    external verification of the ESG share is not possible. CSRD §29a
-                    requires explicit, verifiable ESG KPI texts. External rating: MSCI {msci_rating} ·
-                    Sustainalytics {sust_score:.1f}.
-                </div>""", unsafe_allow_html=True)
-            else:
-                st.markdown(f"""<div class="flag-amber">
-                    <strong>ℹ ESG-Pay in Progress:</strong> Low ESG share in compensation with moderate
-                    external ratings (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}).
-                    CSRD compliance pressure will require adjustments.
-                </div>""", unsafe_allow_html=True)
+                for label, ok in checks:
+                    icon = "✅" if ok else "❌"
+                    col  = "#1e293b" if ok else RED
+                    st.markdown(f'<div style="font-size:.82rem;color:{col};padding:6px 0;border-bottom:1px solid #f1f5f9;">{icon} {label}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec"><div class="sec-title">Pay Equity — Gender &amp; CEO/Worker Ratio</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Female share vs. ARUG II target · Income inequality across DAX</div></div>', unsafe_allow_html=True)
+            col_f, col_r2 = st.columns(2)
+            with col_f:
+                latest_fem = (esg.sort_values("year").groupby("company_shortname").last()
+                              .reset_index()[["company_shortname","female_pct"]]
+                              .sort_values("female_pct", ascending=True).dropna())
+                colors_f = [ORANGE if c==sel_co else ("#4ade80" if v>=30 else "#fbbf24" if v>=20 else "#f87171") for c,v in zip(latest_fem["company_shortname"],latest_fem["female_pct"])]
+                fig_f = go.Figure(go.Bar(x=latest_fem["female_pct"], y=latest_fem["company_shortname"],
+                    orientation="h", marker_color=colors_f,
+                    hovertemplate="%{y}: %{x:.1f}%<extra></extra>"))
+                fig_f.add_vline(x=30, line_dash="dash", line_color=GREEN, line_width=1.5,
+                    annotation_text="30% (ARUG II)", annotation_font=dict(size=8, color=GREEN))
+                fig_f.update_layout(height=480, margin=dict(l=0,r=0,t=10,b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(title="Female Share (%)", range=[0,65], gridcolor=GRAYLT),
+                    yaxis=dict(tickfont=dict(size=9)))
+                st.plotly_chart(fig_f, use_container_width=True)
+            with col_r2:
+                latest_rat = (esg.sort_values("year").groupby("company_shortname").last()
+                              .reset_index()[["company_shortname","ceo_worker_ratio"]]
+                              .sort_values("ceo_worker_ratio", ascending=True).dropna())
+                colors_r = [ORANGE if c==sel_co else (RED if v>65 else AMBER if v>45 else "#94a3b8") for c,v in zip(latest_rat["company_shortname"],latest_rat["ceo_worker_ratio"])]
+                fig_r = go.Figure(go.Bar(x=latest_rat["ceo_worker_ratio"], y=latest_rat["company_shortname"],
+                    orientation="h", marker_color=colors_r,
+                    text=[f"{v:.0f}x" for v in latest_rat["ceo_worker_ratio"]],
+                    textposition="outside", textfont=dict(size=8),
+                    hovertemplate="%{y}: %{x:.0f}x<extra></extra>"))
+                med = latest_rat["ceo_worker_ratio"].median()
+                fig_r.add_vline(x=med, line_dash="dot", line_color=GRAY, line_width=1.5,
+                    annotation_text=f"Median {med:.0f}x", annotation_font=dict(size=8, color=GRAY))
+                fig_r.update_layout(height=480, margin=dict(l=0,r=0,t=10,b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(title="Exec/Worker Pay (x)", gridcolor=GRAYLT),
+                    yaxis=dict(tickfont=dict(size=9)))
+                st.plotly_chart(fig_r, use_container_width=True)
 
-        # DAX Pay-Washing Heatmap
-        st.markdown('<div class="sec"><div class="sec-title">DAX Overview: ESG-Pay vs. External ESG Score</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Quadrants: Who pays for ESG — and has it improved external scores?</div></div>', unsafe_allow_html=True)
-        recent = esg[esg["year"]>=2022]
-        bub2 = recent.groupby("company_shortname").agg(
-            sti=("sti_esg_share","mean"), lti=("lti_esg_share","mean"),
-            avg_comp=("avg_comp","mean")).reset_index().fillna(0)
-        bub2["esg_pay_total"] = bub2["sti"] + bub2["lti"]
-        bub2 = bub2.merge(ext_esg[["company_shortname","sustainalytics_score","msci_score","sustainalytics_risk_category"]], on="company_shortname", how="left")
-        bub2["sust_inv"] = (100 - (bub2["sustainalytics_score"] / 50) * 100).clip(0, 100)
-        bub2["is_sel"] = bub2["company_shortname"] == sel_co
-
-        def quadrant_color(row):
-            pay = row["esg_pay_total"]
-            perf = row["sust_inv"]
-            if pay >= 15 and perf >= 60: return "#16a34a"    # ESG-Leader
-            if pay < 10  and perf >= 65: return "#dc2626"    # Pay-Washer
-            if pay >= 15 and perf < 55:  return "#d97706"    # Pay without results
-            return "#94a3b8"
-
-        bub2["color"] = bub2.apply(quadrant_color, axis=1)
-
-        fig_w = go.Figure()
-        for color, label in [("#16a34a","✅ ESG Leader"), ("#dc2626","🚨 Pay-Washing Risk"),
-                              ("#d97706","⚠ Pay Without Results"), ("#94a3b8","Neutral")]:
-            d = bub2[~bub2["is_sel"] & (bub2["color"]==color)]
-            if len(d)>0:
-                fig_w.add_trace(go.Scatter(
-                    x=d["esg_pay_total"], y=d["sust_inv"],
-                    mode="markers+text",
-                    marker=dict(size=d["avg_comp"].clip(100,2000).apply(lambda v: max(9,min(28,v/70))),
-                        color=color, opacity=0.75, line=dict(width=1.5, color="white")),
-                    text=d["company_shortname"], textposition="top center",
-                    textfont=dict(size=7.5, color="#64748b"),
-                    hovertemplate="<b>%{text}</b><br>ESG-Pay: %{x:.0f}%<br>ESG-Score: %{y:.0f}<extra></extra>",
-                    name=label, showlegend=True))
-        # Selected company
-        sel_w = bub2[bub2["is_sel"]]
-        if len(sel_w)>0:
-            r = sel_w.iloc[0]
-            fig_w.add_trace(go.Scatter(x=[r["esg_pay_total"]], y=[r["sust_inv"]],
-                mode="markers+text",
-                marker=dict(size=max(18,min(34,r["avg_comp"]/70)), color=NAVY,
-                    line=dict(width=3, color=ORANGE)),
-                text=[f"▶ {sel_co}"], textposition="top center",
-                textfont=dict(size=11, color=NAVY),
-                hovertemplate=f"<b>{sel_co}</b><extra></extra>",
-                name=f"▶ {sel_co}", showlegend=True))
-        # Quadrant lines
-        fig_w.add_hline(y=65, line_dash="dot", line_color="#e2e8f0", line_width=1)
-        fig_w.add_vline(x=12, line_dash="dot", line_color="#e2e8f0", line_width=1)
-        # Quadrant labels
-        for x, y, txt, col in [(35,85,"ESG Leader","#15803d"), (2,85,"🚨 Pay-Washing","#dc2626"),
-                                (35,35,"Pay Without Results","#d97706"), (2,35,"Neutral","#94a3b8")]:
-            fig_w.add_annotation(x=x, y=y, text=txt, showarrow=False,
-                font=dict(color=col, size=9), opacity=0.6)
-        fig_w.update_layout(
-            height=440, margin=dict(l=0,r=0,t=10,b=0),
-            plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="ESG Share in Compensation STI+LTI (%)", range=[-5, 68], gridcolor=GRAYLT),
-            yaxis=dict(title="ESG Performance Score (Sustainalytics, inverted)", range=[20, 100], gridcolor=GRAYLT),
-            hovermode="closest",
-            legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)))
-        st.plotly_chart(fig_w, use_container_width=True)
+        elif _sec == "pay_wash":
+            st.markdown('<div class="sec"><div class="sec-title">🔬 External ESG Validation — Pay-Washing Detector</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Compares our derived ESG-pay link with Sustainalytics risk rating & MSCI ESG score</div></div>', unsafe_allow_html=True)
+            if len(ext_esg) > 0:
+                co_ext = ext_esg[ext_esg["company_shortname"] == sel_co]
+                if len(co_ext) > 0:
+                    ext_row = co_ext.iloc[0]
+                    sust_score  = float(ext_row["sustainalytics_score"])
+                    sust_cat    = str(ext_row["sustainalytics_risk_category"])
+                    msci_rating = str(ext_row["msci_rating"])
+                    msci_score  = int(ext_row["msci_score"])
+                    sust_score_inv  = max(0, 100 - (sust_score / 50) * 100)
+                    pay_esg_score = min(100, esg_tot * 2.0) if sti_esg is not None else None
+                    sust_col = {"Negligible": GREEN, "Low": GREEN, "Medium": AMBER, "High": RED, "Severe": "#7f1d1d"}.get(sust_cat, GRAY)
+                    msci_col = {"AAA": GREEN,"AA": GREEN,"A": "#4ade80","BBB": AMBER,"BB": AMBER,"B": RED,"CCC": RED}.get(msci_rating, GRAY)
+                    if pay_esg_score is None:           wash_risk = "opacity"
+                    elif pay_esg_score >= 20 and sust_score_inv >= 60: wash_risk = "aligned"
+                    elif pay_esg_score < 10 and sust_score_inv >= 65:  wash_risk = "washing"
+                    elif pay_esg_score >= 20 and sust_score_inv < 50:  wash_risk = "disconnect"
+                    else:                                               wash_risk = "neutral"
+                    cA, cB, cC = st.columns([1, 1, 1], gap="large")
+                    with cA:
+                        st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
+                            <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">Sustainalytics Risk</div>
+                            <div style="font-size:2.6rem;font-weight:900;color:{sust_col};line-height:1;">{sust_score:.1f}</div>
+                            <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">/ 50 · {sust_cat} Risk</div>
+                            <div style="background:{sust_col}22;border:1px solid {sust_col}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{sust_col};">{"✓ Good" if sust_cat in ("Low","Negligible") else "⚠ Medium" if sust_cat=="Medium" else "✗ High"}</div>
+                        </div>""", unsafe_allow_html=True)
+                    with cB:
+                        st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
+                            <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">MSCI ESG Rating</div>
+                            <div style="font-size:2.6rem;font-weight:900;color:{msci_col};line-height:1;">{msci_rating}</div>
+                            <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">MSCI ESG Leaders Index</div>
+                            <div style="background:{msci_col}22;border:1px solid {msci_col}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{msci_col};">{"AAA–A: Leader" if msci_score>=5 else "BBB: Average" if msci_score==4 else "BB–CCC: Laggard"}</div>
+                        </div>""", unsafe_allow_html=True)
+                    with cC:
+                        if pay_esg_score is not None:
+                            pcolor = GREEN if pay_esg_score >= 25 else AMBER if pay_esg_score >= 10 else RED
+                            st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
+                                <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">ExComp ESG-Pay Score</div>
+                                <div style="font-size:2.6rem;font-weight:900;color:{pcolor};line-height:1;">{pay_esg_score:.0f}</div>
+                                <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">/ 100 · derived from KPI analysis</div>
+                                <div style="background:{pcolor}22;border:1px solid {pcolor}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{pcolor};">{"ESG Payer" if pay_esg_score>=25 else "Low" if pay_esg_score>=5 else "No ESG Link"}</div>
+                            </div>""", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
+                                <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">ExComp ESG-Pay Score</div>
+                                <div style="font-size:2.6rem;font-weight:900;color:{AMBER};line-height:1;">N/V</div>
+                                <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">Not Verifiable</div>
+                                <div style="background:{AMBER}22;border:1px solid {AMBER}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{AMBER};">⚠ Opacity</div>
+                            </div>""", unsafe_allow_html=True)
+                    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                    if wash_risk == "aligned":
+                        st.markdown(f"""<div class="flag-green"><strong>✅ ESG-Pay Alignment:</strong> {sel_co} shows consistency between external ESG ratings (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}) and ESG pay integration ({esg_tot:.0f}% in pay).</div>""", unsafe_allow_html=True)
+                    elif wash_risk == "washing":
+                        st.markdown(f"""<div class="flag-red"><strong>🚨 ESG Pay-Washing Risk:</strong> {sel_co} enjoys a strong external ESG rating (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}), yet links <strong>0% of executive pay</strong> to ESG targets.</div>""", unsafe_allow_html=True)
+                    elif wash_risk == "disconnect":
+                        st.markdown(f"""<div class="flag-amber"><strong>⚠ ESG Pay-Performance Gap:</strong> {sel_co} ties {esg_tot:.0f}% of pay to ESG targets, yet still shows above-average ESG risk. (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating})</div>""", unsafe_allow_html=True)
+                    elif wash_risk == "opacity":
+                        st.markdown(f"""<div class="flag-amber"><strong>⚠ Disclosure Opacity:</strong> {sel_co} uses abstract compensation terms — external verification not possible. MSCI {msci_rating} · Sustainalytics {sust_score:.1f}.</div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""<div class="flag-amber"><strong>ℹ ESG-Pay in Progress:</strong> Low ESG share with moderate external ratings (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}).</div>""", unsafe_allow_html=True)
+                st.markdown('<div class="sec"><div class="sec-title">DAX Overview: ESG-Pay vs. External ESG Score</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Quadrants: Who pays for ESG — and has it improved external scores?</div></div>', unsafe_allow_html=True)
+                recent = esg[esg["year"]>=2022]
+                bub2 = recent.groupby("company_shortname").agg(
+                    sti=("sti_esg_share","mean"), lti=("lti_esg_share","mean"),
+                    avg_comp=("avg_comp","mean")).reset_index().fillna(0)
+                bub2["esg_pay_total"] = bub2["sti"] + bub2["lti"]
+                bub2 = bub2.merge(ext_esg[["company_shortname","sustainalytics_score","msci_score","sustainalytics_risk_category"]], on="company_shortname", how="left")
+                bub2["sust_inv"] = (100 - (bub2["sustainalytics_score"] / 50) * 100).clip(0, 100)
+                bub2["is_sel"] = bub2["company_shortname"] == sel_co
+                def quadrant_color(row):
+                    pay = row["esg_pay_total"]; perf = row["sust_inv"]
+                    if pay >= 15 and perf >= 60: return "#16a34a"
+                    if pay < 10  and perf >= 65: return "#dc2626"
+                    if pay >= 15 and perf < 55:  return "#d97706"
+                    return "#94a3b8"
+                bub2["color"] = bub2.apply(quadrant_color, axis=1)
+                fig_w = go.Figure()
+                for color, label in [("#16a34a","✅ ESG Leader"), ("#dc2626","🚨 Pay-Washing Risk"),
+                                      ("#d97706","⚠ Pay Without Results"), ("#94a3b8","Neutral")]:
+                    d = bub2[~bub2["is_sel"] & (bub2["color"]==color)]
+                    if len(d)>0:
+                        fig_w.add_trace(go.Scatter(x=d["esg_pay_total"], y=d["sust_inv"],
+                            mode="markers+text",
+                            marker=dict(size=d["avg_comp"].clip(100,2000).apply(lambda v: max(9,min(28,v/70))),
+                                color=color, opacity=0.75, line=dict(width=1.5, color="white")),
+                            text=d["company_shortname"], textposition="top center",
+                            textfont=dict(size=7.5, color="#64748b"),
+                            hovertemplate="<b>%{text}</b><br>ESG-Pay: %{x:.0f}%<br>ESG-Score: %{y:.0f}<extra></extra>",
+                            name=label, showlegend=True))
+                sel_w = bub2[bub2["is_sel"]]
+                if len(sel_w)>0:
+                    r = sel_w.iloc[0]
+                    fig_w.add_trace(go.Scatter(x=[r["esg_pay_total"]], y=[r["sust_inv"]],
+                        mode="markers+text",
+                        marker=dict(size=max(18,min(34,r["avg_comp"]/70)), color=NAVY, line=dict(width=3, color=ORANGE)),
+                        text=[f"▶ {sel_co}"], textposition="top center",
+                        textfont=dict(size=11, color=NAVY),
+                        hovertemplate=f"<b>{sel_co}</b><extra></extra>",
+                        name=f"▶ {sel_co}", showlegend=True))
+                fig_w.add_hline(y=65, line_dash="dot", line_color="#e2e8f0", line_width=1)
+                fig_w.add_vline(x=12, line_dash="dot", line_color="#e2e8f0", line_width=1)
+                for x, y, txt, col in [(35,85,"ESG Leader","#15803d"), (2,85,"🚨 Pay-Washing","#dc2626"),
+                                        (35,35,"Pay Without Results","#d97706"), (2,35,"Neutral","#94a3b8")]:
+                    fig_w.add_annotation(x=x, y=y, text=txt, showarrow=False, font=dict(color=col, size=9), opacity=0.6)
+                fig_w.update_layout(height=440, margin=dict(l=0,r=0,t=10,b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(title="ESG Share in Compensation STI+LTI (%)", range=[-5, 68], gridcolor=GRAYLT),
+                    yaxis=dict(title="ESG Performance Score (Sustainalytics, inverted)", range=[20, 100], gridcolor=GRAYLT),
+                    hovermode="closest",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)))
+                st.plotly_chart(fig_w, use_container_width=True)
 
     st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;padding:16px 0 4px 0;border-top:1px solid #e2e8f0;margin-top:12px;">ExComp · TUM Science Hackathon 2026 · ORBIS/Bureau van Dijk · DGAP · Sustainalytics · MSCI ESG · 43 DAX Companies · 2006–2024</div>', unsafe_allow_html=True)
 
@@ -1658,6 +1701,13 @@ def show_capital_allocators():
         pay_ebit_gap = (avg_yoy - avg_ebit) if avg_yoy and avg_ebit and pd.notna(avg_ebit) else None
         aep_over = int((co_df["actual_vs_expected_pct"] > 40).sum()) if "actual_vs_expected_pct" in co_df.columns and co_df["actual_vs_expected_pct"].notna().any() else 0
 
+        # Pre-compute pay_beta for section cards
+        _co_pre = co_df.dropna(subset=["comp_yoy_pct", "ebit_yoy_pct"])
+        pay_beta, pay_corr = None, None
+        if len(_co_pre) > 4:
+            pay_beta = float(np.polyfit(_co_pre["ebit_yoy_pct"].clip(-100, 200), _co_pre["comp_yoy_pct"].clip(-100, 200), 1)[0])
+            pay_corr = float(_co_pre["comp_yoy_pct"].corr(_co_pre["ebit_yoy_pct"]))
+
         k1, k2, k3, k4 = st.columns(4)
         with k1:
             st.markdown(kpi_html(
@@ -1695,186 +1745,237 @@ def show_capital_allocators():
                 info="Composite governance risk score (0–100) averaged over recent years, combining pay-performance gaps, structural anomalies, and Bad Times events. Used to flag systemic governance issues."
             ), unsafe_allow_html=True)
 
-        col_l, col_r = st.columns([3, 2], gap="large")
-        with col_l:
-            st.markdown(sec_html("Pay Growth vs. EBIT Growth",
-                "Compensation growth outpacing earnings is a pay-for-performance misalignment signal"), unsafe_allow_html=True)
-            if "ebit_yoy_pct" in co_df.columns:
-                co_clean = co_df.dropna(subset=["comp_yoy_pct", "ebit_yoy_pct"])
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=co_clean["year"], y=co_clean["ebit_yoy_pct"].clip(-100, 200),
-                    line=dict(color="#3b82f6", width=2), mode="lines+markers", marker=dict(size=5),
-                    name="EBIT Growth %", hovertemplate="EBIT: %{y:+.1f}%<extra></extra>"))
-                fig.add_trace(go.Scatter(x=co_clean["year"], y=co_clean["comp_yoy_pct"].clip(-100, 200),
-                    line=dict(color=ORANGE, width=2.5), mode="lines+markers", marker=dict(size=5),
-                    name="Exec Pay Growth %", hovertemplate="Pay: %{y:+.1f}%<extra></extra>"))
-                fig.add_hline(y=0, line_color=GRAY, line_width=1)
-                fig.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    yaxis=dict(title="Growth (%)", gridcolor=GRAYLT),
-                    xaxis=dict(gridcolor=GRAYLT),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.01),
-                    hovermode="x unified")
-                st.plotly_chart(fig, use_container_width=True)
+        # ── Section panel ───────────────────────────────────────────────
+        _sec = st.session_state.get("capital_section", None)
 
-        with col_r:
-            st.markdown(sec_html("Governance Risk Timeline"), unsafe_allow_html=True)
-            if "anomaly_score_pct" in co_df.columns:
-                fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(x=co_df["year"], y=co_df["anomaly_score_pct"],
-                    fill="tozeroy", fillcolor="rgba(220,38,38,.08)",
-                    line=dict(color=RED, width=2), mode="lines+markers", marker=dict(size=5),
-                    name="Risk Score"))
-                fig2.add_hline(y=60, line_dash="dot", line_color=RED, line_width=1,
-                    annotation_text="High Risk", annotation_font=dict(size=8, color=RED))
-                fig2.add_hline(y=40, line_dash="dot", line_color=AMBER, line_width=1)
-                fig2.update_layout(height=170, margin=dict(l=0, r=0, t=10, b=0),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    yaxis=dict(range=[0, 105], gridcolor=GRAYLT, tickfont=dict(size=9)),
-                    xaxis=dict(gridcolor=GRAYLT, tickfont=dict(size=9)))
-                st.plotly_chart(fig2, use_container_width=True)
+        if _sec is None:
+            st.markdown('<div class="sec"><div class="sec-title">Dive Deeper — Select an Analysis Area</div><div class="sec-sub">Hover ⓘ on any metric above for context · click a card to explore</div></div>', unsafe_allow_html=True)
+            sc1, sc2, sc3 = st.columns(3, gap="medium")
+            with sc1:
+                _pc = RED if pay_ebit_gap and pay_ebit_gap > 5 else GREEN
+                st.markdown(f"""<div class="mod-card">
+                    <div class="mod-icon-wrap" style="background:#dbeafe;">📈</div>
+                    <div class="mod-title">Pay vs. EBIT Growth</div>
+                    <div class="mod-desc">Has executive pay outpaced earnings? Pay-for-performance alignment chart with crisis year highlights.</div>
+                    <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                        <div class="mod-stat" style="color:{_pc};">{f'{pay_ebit_gap:+.1f}pp' if pay_ebit_gap is not None else '—'}</div>
+                        <div class="mod-statlbl">Pay vs. EBIT gap (avg.)</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+                if st.button("→ Pay Analysis", key="cap_s1", use_container_width=True):
+                    st.session_state["capital_section"] = "pay_perf"; st.rerun()
+            with sc2:
+                _gc = risk_color(gov_sc or 0)
+                st.markdown(f"""<div class="mod-card">
+                    <div class="mod-icon-wrap" style="background:#fef2f2;">⚠️</div>
+                    <div class="mod-title">Governance Risk Score</div>
+                    <div class="mod-desc">Composite risk timeline from pay anomalies, CEO premium & Bad Times events — 0 to 100 scale.</div>
+                    <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                        <div class="mod-stat" style="color:{_gc};">{f'{gov_sc:.0f}/100' if gov_sc else '—'}</div>
+                        <div class="mod-statlbl">Avg. Governance Risk</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+                if st.button("→ Governance Risk", key="cap_s2", use_container_width=True):
+                    st.session_state["capital_section"] = "gov_risk"; st.rerun()
+            with sc3:
+                _bc = GREEN if pay_beta and 0 < pay_beta < 0.5 else RED if pay_beta and pay_beta > 0.8 else AMBER if pay_beta else GRAY
+                st.markdown(f"""<div class="mod-card">
+                    <div class="mod-icon-wrap" style="background:#f3e8ff;">📊</div>
+                    <div class="mod-title">Statistical Analysis</div>
+                    <div class="mod-desc">Pay-β regression, cumulative excess pay, LTI trend slope & crisis resilience metrics.</div>
+                    <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                        <div class="mod-stat" style="color:{_bc};">{f'β={pay_beta:.2f}' if pay_beta is not None else '—'}</div>
+                        <div class="mod-statlbl">Pay-Performance Beta</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+                if st.button("→ Statistical Analysis", key="cap_s3", use_container_width=True):
+                    st.session_state["capital_section"] = "stats"; st.rerun()
 
-            flags = [
-                (sz_cnt > 0,      f"⚠ {sz_cnt}× pay ↑ when EBIT ↓ (Bad Times)", "red"),
-                (pay_ebit_gap and pay_ebit_gap > 5, f"⚠ Pay outpaced EBIT by {pay_ebit_gap:.1f}pp on avg.", "red"),
-                (aep_over > 0,    f"⚠ {aep_over} year(s) >+40% above model expectation", "amber"),
-                (ceo_prem and ceo_prem > 2.5, f"⚠ CEO premium {ceo_prem:.1f}x (DAX median ~2x)", "amber"),
-                (lti_avg and lti_avg < 25, f"⚠ Low LTI share ({lti_avg:.0f}%) — short-termism risk", "amber"),
-            ]
-            has_flag = False
-            for cond, txt, sev in flags:
-                if cond:
-                    st.markdown(f'<div class="flag-{sev}">{txt}</div>', unsafe_allow_html=True)
-                    has_flag = True
-            if not has_flag:
-                st.markdown('<div class="flag-green">✅ No major pay-for-performance red flags detected.</div>', unsafe_allow_html=True)
+        else:
+            if st.button("← Back to Overview", key="cap_back"):
+                st.session_state["capital_section"] = None; st.rerun()
 
-        # ── Row 2: quantitative deep-dive ──────────────────────────────
-        st.markdown(sec_html("Quantitative Pay-for-Performance Analysis",
-            "Statistical measures of compensation alignment — pay-β, cumulative excess, LTI trend, crisis resilience"), unsafe_allow_html=True)
-
-        co_mu_all = mu[mu["company_shortname"] == sel_co].sort_values("year")
-
-        # Pay-performance beta
-        co_clean = co_df.dropna(subset=["comp_yoy_pct", "ebit_yoy_pct"])
-        pay_beta, pay_corr = None, None
-        if len(co_clean) > 4:
-            pay_beta = float(np.polyfit(
-                co_clean["ebit_yoy_pct"].clip(-100, 200),
-                co_clean["comp_yoy_pct"].clip(-100, 200), 1)[0])
-            pay_corr = float(co_clean["comp_yoy_pct"].corr(co_clean["ebit_yoy_pct"]))
-
-        # Cumulative excess pay in €M
-        cum_excess_m = None
-        co_mu_known = co_mu_all.dropna(subset=["total_comp_bt", "pred_comp"])
-        if len(co_mu_known) > 0:
-            cum_excess_m = float((co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"]).sum() / 1000)
-
-        # Consecutive years above +15% threshold
-        max_streak = 0
-        if "actual_vs_expected_pct" in co_mu_all.columns and co_mu_all["actual_vs_expected_pct"].notna().any():
-            curr = 0
-            for v in (co_mu_all["actual_vs_expected_pct"] > 15).fillna(False):
-                if v: curr += 1; max_streak = max(max_streak, curr)
-                else: curr = 0
-
-        # LTI trend slope (pp per year)
-        lti_slope = None
-        lti_clean = co_df.dropna(subset=["lti_pct"])
-        if len(lti_clean) > 4:
-            lti_slope = float(np.polyfit(range(len(lti_clean)), lti_clean["lti_pct"].values, 1)[0])
-
-        # Crisis resilience: comp change in GFC (2009) and COVID (2020)
-        gfc_chg   = float(co_df[co_df["year"] == 2009]["comp_yoy_pct"].values[0]) if 2009 in co_df["year"].values and co_df[co_df["year"] == 2009]["comp_yoy_pct"].notna().any() else None
-        covid_chg = float(co_df[co_df["year"] == 2020]["comp_yoy_pct"].values[0]) if 2020 in co_df["year"].values and co_df[co_df["year"] == 2020]["comp_yoy_pct"].notna().any() else None
-
-        qa1, qa2, qa3, qa4, qa5 = st.columns(5)
-        with qa1:
-            beta_col = GREEN if pay_beta and 0 < pay_beta < 0.5 else RED if pay_beta and pay_beta > 0.8 else AMBER if pay_beta else GRAY
-            beta_lbl = "✅ Low coupling" if pay_beta and pay_beta < 0.3 else "⚠ Tight coupling" if pay_beta and pay_beta > 0.7 else "Moderate" if pay_beta else "n/a"
-            st.markdown(kpi_html(f"{pay_beta:.2f}" if pay_beta is not None else "—",
-                "Pay-Performance β",
-                f"r={pay_corr:.2f}" if pay_corr is not None else beta_lbl,
-                beta_col, beta_col,
-                info="Linear regression slope of exec pay growth (Y) on EBIT growth (X). β=1 means pay moves 1:1 with earnings. β close to 0 or negative means pay is essentially decoupled from operating performance — a key investor concern."), unsafe_allow_html=True)
-        with qa2:
-            exc_col = RED if cum_excess_m and cum_excess_m > 50 else AMBER if cum_excess_m and cum_excess_m > 10 else GREEN if cum_excess_m else GRAY
-            st.markdown(kpi_html(
-                f"€{cum_excess_m:+.0f}M" if cum_excess_m is not None else "—",
-                "Cumulative Excess Pay",
-                "vs. model expectation (all yrs)",
-                exc_col, exc_col,
-                info="Total euros of excess pay above the OLS model's fair-value prediction, summed over all years with available data. Represents the aggregate shareholder value transferred to executives beyond what is justified by company fundamentals."), unsafe_allow_html=True)
-        with qa3:
-            str_col = RED if max_streak >= 3 else AMBER if max_streak >= 2 else GREEN
-            str_lbl = "⚠ Persistent offender" if max_streak >= 3 else "⚠ 2 consecutive yrs" if max_streak >= 2 else "✅ No persistence"
-            st.markdown(kpi_html(f"{max_streak} yr{'s' if max_streak != 1 else ''}",
-                "Longest Overpay Streak",
-                str_lbl, str_col, str_col,
-                info="Maximum number of consecutive years where actual pay exceeded the model expectation by more than +15%. Long streaks indicate structural overpayment rather than one-off events, and are a strong red flag for governance activists."), unsafe_allow_html=True)
-        with qa4:
-            sl_col = GREEN if lti_slope and lti_slope > 0.3 else RED if lti_slope and lti_slope < -0.3 else GRAY
-            sl_lbl = f"{'↑' if lti_slope and lti_slope > 0 else '↓'} {abs(lti_slope):.2f}pp/yr" if lti_slope else "n/a"
-            st.markdown(kpi_html(sl_lbl if lti_slope else "—",
-                "LTI Trend Slope",
-                "✅ Rising long-term bias" if lti_slope and lti_slope > 0.3 else "⚠ Declining LTI" if lti_slope and lti_slope < -0.3 else "Stable structure",
-                sl_col, sl_col,
-                info="Year-over-year trend in the LTI share of total compensation (pp/year), estimated via linear regression. A positive slope means the company is progressively shifting pay toward long-term incentives — a positive governance signal."), unsafe_allow_html=True)
-        with qa5:
-            st.markdown(kpi_html(
-                f"{gfc_chg:+.1f}% / {covid_chg:+.1f}%" if gfc_chg is not None and covid_chg is not None else (f"{gfc_chg:+.1f}% / —" if gfc_chg is not None else "—"),
-                "Crisis Pay Change",
-                "GFC 2009 / COVID 2020",
-                RED if (gfc_chg and gfc_chg > 5) or (covid_chg and covid_chg > 5) else GREEN,
-                RED if (gfc_chg and gfc_chg > 5) or (covid_chg and covid_chg > 5) else GREEN,
-                info="Year-on-year change in exec pay during the two major crises: Global Financial Crisis (2009) and COVID-19 (2020). Positive values mean pay rose during downturns — a strong pay-performance disconnect signal."), unsafe_allow_html=True)
-
-        # Beta scatter + LTI trend line
-        if pay_beta is not None or lti_slope is not None:
-            col_b, col_lti = st.columns(2, gap="large")
-            with col_b:
-                st.markdown(sec_html("Pay-Performance Scatter (β regression)",
-                    "Each dot = one year · slope = pay-β · flat or negative slope = pay decoupled from earnings"), unsafe_allow_html=True)
-                if pay_beta is not None:
-                    x_vals = co_clean["ebit_yoy_pct"].clip(-100, 200)
-                    y_vals = co_clean["comp_yoy_pct"].clip(-100, 200)
-                    x_line = np.linspace(x_vals.min(), x_vals.max(), 50)
-                    y_line = pay_beta * x_line + float(np.polyfit(x_vals, y_vals, 1)[1])
-                    fig_b = go.Figure()
-                    fig_b.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="markers+text",
-                        marker=dict(size=8, color=ORANGE, opacity=0.8),
-                        text=co_clean["year"].astype(str), textposition="top center",
-                        textfont=dict(size=7), name="Year"))
-                    fig_b.add_trace(go.Scatter(x=x_line, y=y_line, mode="lines",
-                        line=dict(color=NAVY, width=2, dash="dash"),
-                        name=f"β={pay_beta:.2f}  r={pay_corr:.2f}"))
-                    fig_b.add_hline(y=0, line_color=GRAY, line_width=1)
-                    fig_b.add_vline(x=0, line_color=GRAY, line_width=1)
-                    fig_b.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
+            if _sec == "pay_perf":
+                st.markdown(sec_html("Pay Growth vs. EBIT Growth",
+                    "Compensation growth outpacing earnings is a pay-for-performance misalignment signal"), unsafe_allow_html=True)
+                if "ebit_yoy_pct" in co_df.columns:
+                    co_clean = co_df.dropna(subset=["comp_yoy_pct", "ebit_yoy_pct"])
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(x=co_clean["year"], y=co_clean["ebit_yoy_pct"].clip(-100, 200),
+                        line=dict(color="#3b82f6", width=2), mode="lines+markers", marker=dict(size=5),
+                        name="EBIT Growth %", hovertemplate="EBIT: %{y:+.1f}%<extra></extra>"))
+                    fig.add_trace(go.Scatter(x=co_clean["year"], y=co_clean["comp_yoy_pct"].clip(-100, 200),
+                        line=dict(color=ORANGE, width=2.5), mode="lines+markers", marker=dict(size=5),
+                        name="Exec Pay Growth %", hovertemplate="Pay: %{y:+.1f}%<extra></extra>"))
+                    fig.add_hline(y=0, line_color=GRAY, line_width=1)
+                    fig.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0),
                         plot_bgcolor="white", paper_bgcolor="white",
-                        xaxis=dict(title="EBIT Growth (%)", gridcolor=GRAYLT),
-                        yaxis=dict(title="Exec Pay Growth (%)", gridcolor=GRAYLT),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)))
-                    st.plotly_chart(fig_b, use_container_width=True)
-            with col_lti:
-                st.markdown(sec_html("LTI Share Trend",
-                    "Is the board moving toward long-term incentives over time?"), unsafe_allow_html=True)
-                if lti_slope is not None:
-                    lti_yrs = lti_clean["year"].values
-                    lti_line = lti_slope * np.arange(len(lti_yrs)) + float(np.polyfit(range(len(lti_yrs)), lti_clean["lti_pct"].values, 1)[1])
-                    fig_lti = go.Figure()
-                    fig_lti.add_trace(go.Bar(x=lti_yrs, y=lti_clean["lti_pct"],
-                        marker_color=[GREEN if v > 35 else AMBER if v > 20 else RED for v in lti_clean["lti_pct"]],
-                        name="LTI %"))
-                    fig_lti.add_trace(go.Scatter(x=lti_yrs, y=lti_line, mode="lines",
-                        line=dict(color=NAVY, width=2, dash="dash"),
-                        name=f"Trend {lti_slope:+.2f}pp/yr"))
-                    fig_lti.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
-                        plot_bgcolor="white", paper_bgcolor="white",
-                        yaxis=dict(title="LTI Share (%)", gridcolor=GRAYLT),
+                        yaxis=dict(title="Growth (%)", gridcolor=GRAYLT),
                         xaxis=dict(gridcolor=GRAYLT),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)))
-                    st.plotly_chart(fig_lti, use_container_width=True)
+                        legend=dict(orientation="h", yanchor="bottom", y=1.01),
+                        hovermode="x unified")
+                    st.plotly_chart(fig, use_container_width=True)
+                flags = [
+                    (sz_cnt > 0,      f"⚠ {sz_cnt}× pay ↑ when EBIT ↓ (Bad Times)", "red"),
+                    (pay_ebit_gap and pay_ebit_gap > 5, f"⚠ Pay outpaced EBIT by {pay_ebit_gap:.1f}pp on avg.", "red"),
+                    (aep_over > 0,    f"⚠ {aep_over} year(s) >+40% above model expectation", "amber"),
+                    (ceo_prem and ceo_prem > 2.5, f"⚠ CEO premium {ceo_prem:.1f}x (DAX median ~2x)", "amber"),
+                    (lti_avg and lti_avg < 25, f"⚠ Low LTI share ({lti_avg:.0f}%) — short-termism risk", "amber"),
+                ]
+                has_flag = False
+                for cond, txt, sev in flags:
+                    if cond:
+                        st.markdown(f'<div class="flag-{sev}">{txt}</div>', unsafe_allow_html=True)
+                        has_flag = True
+                if not has_flag:
+                    st.markdown('<div class="flag-green">✅ No major pay-for-performance red flags detected.</div>', unsafe_allow_html=True)
+
+            elif _sec == "gov_risk":
+                st.markdown(sec_html("Governance Risk Timeline",
+                    "Composite risk score (0–100) per year — above 60 = high risk, above 40 = elevated"), unsafe_allow_html=True)
+                if "anomaly_score_pct" in co_df.columns:
+                    fig2 = go.Figure()
+                    fig2.add_trace(go.Scatter(x=co_df["year"], y=co_df["anomaly_score_pct"],
+                        fill="tozeroy", fillcolor="rgba(220,38,38,.08)",
+                        line=dict(color=RED, width=2), mode="lines+markers", marker=dict(size=5),
+                        name="Risk Score"))
+                    fig2.add_hline(y=60, line_dash="dot", line_color=RED, line_width=1,
+                        annotation_text="High Risk", annotation_font=dict(size=8, color=RED))
+                    fig2.add_hline(y=40, line_dash="dot", line_color=AMBER, line_width=1)
+                    fig2.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        yaxis=dict(range=[0, 105], gridcolor=GRAYLT, title="Risk Score (0–100)"),
+                        xaxis=dict(gridcolor=GRAYLT))
+                    st.plotly_chart(fig2, use_container_width=True)
+                flags = [
+                    (sz_cnt > 0,      f"⚠ {sz_cnt}× pay ↑ when EBIT ↓ (Bad Times)", "red"),
+                    (pay_ebit_gap and pay_ebit_gap > 5, f"⚠ Pay outpaced EBIT by {pay_ebit_gap:.1f}pp on avg.", "red"),
+                    (aep_over > 0,    f"⚠ {aep_over} year(s) >+40% above model expectation", "amber"),
+                    (ceo_prem and ceo_prem > 2.5, f"⚠ CEO premium {ceo_prem:.1f}x (DAX median ~2x)", "amber"),
+                    (lti_avg and lti_avg < 25, f"⚠ Low LTI share ({lti_avg:.0f}%) — short-termism risk", "amber"),
+                ]
+                has_flag = False
+                for cond, txt, sev in flags:
+                    if cond:
+                        st.markdown(f'<div class="flag-{sev}">{txt}</div>', unsafe_allow_html=True)
+                        has_flag = True
+                if not has_flag:
+                    st.markdown('<div class="flag-green">✅ No major governance risk red flags detected.</div>', unsafe_allow_html=True)
+
+            elif _sec == "stats":
+                st.markdown(sec_html("Quantitative Pay-for-Performance Analysis",
+                    "Statistical measures of compensation alignment — pay-β, cumulative excess, LTI trend, crisis resilience"), unsafe_allow_html=True)
+
+                co_mu_all = mu[mu["company_shortname"] == sel_co].sort_values("year")
+                co_clean = co_df.dropna(subset=["comp_yoy_pct", "ebit_yoy_pct"])
+
+                cum_excess_m = None
+                co_mu_known = co_mu_all.dropna(subset=["total_comp_bt", "pred_comp"])
+                if len(co_mu_known) > 0:
+                    cum_excess_m = float((co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"]).sum() / 1000)
+
+                max_streak = 0
+                if "actual_vs_expected_pct" in co_mu_all.columns and co_mu_all["actual_vs_expected_pct"].notna().any():
+                    curr = 0
+                    for v in (co_mu_all["actual_vs_expected_pct"] > 15).fillna(False):
+                        if v: curr += 1; max_streak = max(max_streak, curr)
+                        else: curr = 0
+
+                lti_slope = None
+                lti_clean = co_df.dropna(subset=["lti_pct"])
+                if len(lti_clean) > 4:
+                    lti_slope = float(np.polyfit(range(len(lti_clean)), lti_clean["lti_pct"].values, 1)[0])
+
+                gfc_chg   = float(co_df[co_df["year"] == 2009]["comp_yoy_pct"].values[0]) if 2009 in co_df["year"].values and co_df[co_df["year"] == 2009]["comp_yoy_pct"].notna().any() else None
+                covid_chg = float(co_df[co_df["year"] == 2020]["comp_yoy_pct"].values[0]) if 2020 in co_df["year"].values and co_df[co_df["year"] == 2020]["comp_yoy_pct"].notna().any() else None
+
+                qa1, qa2, qa3, qa4, qa5 = st.columns(5)
+                with qa1:
+                    beta_col = GREEN if pay_beta and 0 < pay_beta < 0.5 else RED if pay_beta and pay_beta > 0.8 else AMBER if pay_beta else GRAY
+                    beta_lbl = "✅ Low coupling" if pay_beta and pay_beta < 0.3 else "⚠ Tight coupling" if pay_beta and pay_beta > 0.7 else "Moderate" if pay_beta else "n/a"
+                    st.markdown(kpi_html(f"{pay_beta:.2f}" if pay_beta is not None else "—",
+                        "Pay-Performance β",
+                        f"r={pay_corr:.2f}" if pay_corr is not None else beta_lbl,
+                        beta_col, beta_col,
+                        info="Linear regression slope of exec pay growth (Y) on EBIT growth (X). β=1 means pay moves 1:1 with earnings. β close to 0 or negative means pay is essentially decoupled from operating performance — a key investor concern."), unsafe_allow_html=True)
+                with qa2:
+                    exc_col = RED if cum_excess_m and cum_excess_m > 50 else AMBER if cum_excess_m and cum_excess_m > 10 else GREEN if cum_excess_m else GRAY
+                    st.markdown(kpi_html(
+                        f"€{cum_excess_m:+.0f}M" if cum_excess_m is not None else "—",
+                        "Cumulative Excess Pay",
+                        "vs. model expectation (all yrs)",
+                        exc_col, exc_col,
+                        info="Total euros of excess pay above the OLS model's fair-value prediction, summed over all years with available data. Represents the aggregate shareholder value transferred to executives beyond what is justified by company fundamentals."), unsafe_allow_html=True)
+                with qa3:
+                    str_col = RED if max_streak >= 3 else AMBER if max_streak >= 2 else GREEN
+                    str_lbl = "⚠ Persistent offender" if max_streak >= 3 else "⚠ 2 consecutive yrs" if max_streak >= 2 else "✅ No persistence"
+                    st.markdown(kpi_html(f"{max_streak} yr{'s' if max_streak != 1 else ''}",
+                        "Longest Overpay Streak",
+                        str_lbl, str_col, str_col,
+                        info="Maximum number of consecutive years where actual pay exceeded the model expectation by more than +15%. Long streaks indicate structural overpayment rather than one-off events, and are a strong red flag for governance activists."), unsafe_allow_html=True)
+                with qa4:
+                    sl_col = GREEN if lti_slope and lti_slope > 0.3 else RED if lti_slope and lti_slope < -0.3 else GRAY
+                    sl_lbl = f"{'↑' if lti_slope and lti_slope > 0 else '↓'} {abs(lti_slope):.2f}pp/yr" if lti_slope else "n/a"
+                    st.markdown(kpi_html(sl_lbl if lti_slope else "—",
+                        "LTI Trend Slope",
+                        "✅ Rising long-term bias" if lti_slope and lti_slope > 0.3 else "⚠ Declining LTI" if lti_slope and lti_slope < -0.3 else "Stable structure",
+                        sl_col, sl_col,
+                        info="Year-over-year trend in the LTI share of total compensation (pp/year), estimated via linear regression. A positive slope means the company is progressively shifting pay toward long-term incentives — a positive governance signal."), unsafe_allow_html=True)
+                with qa5:
+                    st.markdown(kpi_html(
+                        f"{gfc_chg:+.1f}% / {covid_chg:+.1f}%" if gfc_chg is not None and covid_chg is not None else (f"{gfc_chg:+.1f}% / —" if gfc_chg is not None else "—"),
+                        "Crisis Pay Change",
+                        "GFC 2009 / COVID 2020",
+                        RED if (gfc_chg and gfc_chg > 5) or (covid_chg and covid_chg > 5) else GREEN,
+                        RED if (gfc_chg and gfc_chg > 5) or (covid_chg and covid_chg > 5) else GREEN,
+                        info="Year-on-year change in exec pay during the two major crises: Global Financial Crisis (2009) and COVID-19 (2020). Positive values mean pay rose during downturns — a strong pay-performance disconnect signal."), unsafe_allow_html=True)
+
+                if pay_beta is not None or lti_slope is not None:
+                    col_b, col_lti = st.columns(2, gap="large")
+                    with col_b:
+                        st.markdown(sec_html("Pay-Performance Scatter (β regression)",
+                            "Each dot = one year · slope = pay-β · flat or negative slope = pay decoupled from earnings"), unsafe_allow_html=True)
+                        if pay_beta is not None:
+                            x_vals = co_clean["ebit_yoy_pct"].clip(-100, 200)
+                            y_vals = co_clean["comp_yoy_pct"].clip(-100, 200)
+                            x_line = np.linspace(x_vals.min(), x_vals.max(), 50)
+                            y_line = pay_beta * x_line + float(np.polyfit(x_vals, y_vals, 1)[1])
+                            fig_b = go.Figure()
+                            fig_b.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="markers+text",
+                                marker=dict(size=8, color=ORANGE, opacity=0.8),
+                                text=co_clean["year"].astype(str), textposition="top center",
+                                textfont=dict(size=7), name="Year"))
+                            fig_b.add_trace(go.Scatter(x=x_line, y=y_line, mode="lines",
+                                line=dict(color=NAVY, width=2, dash="dash"),
+                                name=f"β={pay_beta:.2f}  r={pay_corr:.2f}"))
+                            fig_b.add_hline(y=0, line_color=GRAY, line_width=1)
+                            fig_b.add_vline(x=0, line_color=GRAY, line_width=1)
+                            fig_b.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
+                                plot_bgcolor="white", paper_bgcolor="white",
+                                xaxis=dict(title="EBIT Growth (%)", gridcolor=GRAYLT),
+                                yaxis=dict(title="Exec Pay Growth (%)", gridcolor=GRAYLT),
+                                legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)))
+                            st.plotly_chart(fig_b, use_container_width=True)
+                    with col_lti:
+                        st.markdown(sec_html("LTI Share Trend",
+                            "Is the board moving toward long-term incentives over time?"), unsafe_allow_html=True)
+                        if lti_slope is not None:
+                            lti_yrs = lti_clean["year"].values
+                            lti_line = lti_slope * np.arange(len(lti_yrs)) + float(np.polyfit(range(len(lti_yrs)), lti_clean["lti_pct"].values, 1)[1])
+                            fig_lti = go.Figure()
+                            fig_lti.add_trace(go.Bar(x=lti_yrs, y=lti_clean["lti_pct"],
+                                marker_color=[GREEN if v > 35 else AMBER if v > 20 else RED for v in lti_clean["lti_pct"]],
+                                name="LTI %"))
+                            fig_lti.add_trace(go.Scatter(x=lti_yrs, y=lti_line, mode="lines",
+                                line=dict(color=NAVY, width=2, dash="dash"),
+                                name=f"Trend {lti_slope:+.2f}pp/yr"))
+                            fig_lti.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
+                                plot_bgcolor="white", paper_bgcolor="white",
+                                yaxis=dict(title="LTI Share (%)", gridcolor=GRAYLT),
+                                xaxis=dict(gridcolor=GRAYLT),
+                                legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)))
+                            st.plotly_chart(fig_lti, use_container_width=True)
+
     else:
         st.info(f"Detailed feature data not available for {sel_co}.")
 
@@ -1917,9 +2018,26 @@ def show_board_hr():
     aep    = float(co_mu_yr["actual_vs_expected_pct"].iloc[0]) if len(co_mu_yr) > 0 and co_mu_yr["actual_vs_expected_pct"].notna().any() else None
     n_exec = int(co_yr["n_executives"].iloc[0]) if len(co_yr) > 0 and "n_executives" in co_yr.columns and co_yr["n_executives"].notna().any() else None
     ceo_pr = float(co_yr["ceo_board_premium_ratio"].iloc[0]) if len(co_yr) > 0 and "ceo_board_premium_ratio" in co_yr.columns and co_yr["ceo_board_premium_ratio"].notna().any() else None
+    gov_sc = float(co_df["anomaly_score_pct"].mean()) if in_model and len(co_df) > 0 and "anomaly_score_pct" in co_df.columns and co_df["anomaly_score_pct"].notna().any() else None
     _, t_col, t_lbl = traffic(aep)
 
-    k1, k2, k3, k4 = st.columns(4)
+    # Pre-compute AGM defensibility score for section card
+    dax_yr_full = df[df["year"] == sel_year]
+    def_score = None
+    if aep is not None and pctile is not None:
+        dev_pts = max(0, min(40, 40 - abs(aep) * 0.5))
+        rank_pts = min(30, (1 - (rank / len(year_mu) if rank and len(year_mu) > 0 else 0.5)) * 30)
+        if in_model and len(co_yr) > 0:
+            dists = []
+            for _c in ["fixed_pct", "sti_pct", "lti_pct"]:
+                if _c in co_yr.columns and _c in dax_yr_full.columns and co_yr[_c].notna().any():
+                    dists.append(abs(float(co_yr[_c].iloc[0]) - dax_yr_full[_c].mean()))
+            struct_pts = max(0, 30 - (np.mean(dists) * 0.5 if dists else 15))
+        else:
+            struct_pts = 15
+        def_score = dev_pts + rank_pts + struct_pts
+
+    k1, k2, k3, k4, k5 = st.columns(5)
     with k1: st.markdown(kpi_html(f"#{rank}" if rank else "—", "DAX Peer Rank",
         f"of {len(year_mu)} companies", NAVY,
         info="Absolute compensation rank among all DAX companies for the selected year. Lower = higher total board pay. Useful for the compensation committee to position the company against explicit peer benchmarks."), unsafe_allow_html=True)
@@ -1933,202 +2051,240 @@ def show_board_hr():
         "⚠ High (>2.5x)" if ceo_pr and ceo_pr > 2.5 else "Within range",
         RED if ceo_pr and ceo_pr > 2.5 else GREEN, RED if ceo_pr and ceo_pr > 2.5 else GREEN,
         info="CEO total compensation divided by the average compensation of other executive board members. A premium >2.5x is at the high end for DAX companies and can trigger questions about pay equity within the board."), unsafe_allow_html=True)
+    with k5: st.markdown(kpi_html(f"{gov_sc:.0f}/100" if gov_sc else "—", "Governance Risk",
+        "⚠ High Risk" if gov_sc and gov_sc > 60 else "✅ Normal",
+        risk_color(gov_sc or 0), risk_color(gov_sc or 0),
+        info="Composite governance risk score (0–100) averaged over all available years, combining pay anomalies, CEO premium and Bad Times events. High scores signal systemic governance concerns relevant to AGM defensibility."), unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([3, 2], gap="large")
-    with col_l:
-        st.markdown(sec_html(f"Compensation Structure vs. DAX Average — {sel_year}",
-            "Fixed / STI / LTI share compared to DAX peers — deviation > 15pp warrants discussion"), unsafe_allow_html=True)
-        if in_model and len(co_yr) > 0:
-            fix_co  = float(co_yr["fixed_pct"].iloc[0]) if co_yr["fixed_pct"].notna().any() else None
-            sti_co  = float(co_yr["sti_pct"].iloc[0]) if co_yr["sti_pct"].notna().any() else None
-            lti_co  = float(co_yr["lti_pct"].iloc[0]) if co_yr["lti_pct"].notna().any() else None
-            dax_yr  = df[df["year"] == sel_year]
-            fix_dax = float(dax_yr["fixed_pct"].mean()) if "fixed_pct" in dax_yr.columns else None
-            sti_dax = float(dax_yr["sti_pct"].mean()) if "sti_pct" in dax_yr.columns else None
-            lti_dax = float(dax_yr["lti_pct"].mean()) if "lti_pct" in dax_yr.columns else None
+    # ── Section panel ───────────────────────────────────────────────
+    _sec = st.session_state.get("board_section", None)
 
-            if all(v is not None for v in [fix_co, sti_co, lti_co, fix_dax, sti_dax, lti_dax]):
-                cats = ["Fixed", "STI (Short-term)", "LTI (Long-term)"]
-                fig = go.Figure()
-                fig.add_trace(go.Bar(name=sel_co, x=cats, y=[fix_co, sti_co, lti_co],
-                    marker_color=ORANGE, text=[f"{v:.0f}%" for v in [fix_co, sti_co, lti_co]],
-                    textposition="outside"))
-                fig.add_trace(go.Bar(name="DAX Average", x=cats, y=[fix_dax, sti_dax, lti_dax],
-                    marker_color="#94a3b8", text=[f"{v:.0f}%" for v in [fix_dax, sti_dax, lti_dax]],
-                    textposition="outside"))
-                fig.update_layout(height=280, barmode="group", margin=dict(l=0, r=0, t=10, b=0),
+    if _sec is None:
+        st.markdown('<div class="sec"><div class="sec-title">Dive Deeper — Select an Analysis Area</div><div class="sec-sub">Hover ⓘ on any metric above for context · click a card to explore</div></div>', unsafe_allow_html=True)
+        sc1, sc2, sc3 = st.columns(3, gap="medium")
+        with sc1:
+            _ac = t_col
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#dbeafe;">🏛</div>
+                <div class="mod-title">Compensation Structure</div>
+                <div class="mod-desc">Fixed/STI/LTI split vs. DAX average, peer rank detail & Say-on-Pay risk assessment.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_ac};">{f'{aep:+.0f}%' if aep is not None else '—'}</div>
+                    <div class="mod-statlbl">vs. Model Expectation</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ Compensation Structure", key="brd_s1", use_container_width=True):
+                st.session_state["board_section"] = "structure"; st.rerun()
+        with sc2:
+            _gc = risk_color(gov_sc or 0)
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#fef2f2;">⚠️</div>
+                <div class="mod-title">Governance Risk Score</div>
+                <div class="mod-desc">Composite governance risk timeline (0–100) combining anomalies, CEO premium & Bad Times events.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_gc};">{f'{gov_sc:.0f}/100' if gov_sc else '—'}</div>
+                    <div class="mod-statlbl">Avg. Governance Risk</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ Governance Risk", key="brd_s2", use_container_width=True):
+                st.session_state["board_section"] = "gov_risk"; st.rerun()
+        with sc3:
+            _dc = GREEN if def_score and def_score > 65 else AMBER if def_score and def_score > 40 else RED if def_score else GRAY
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#ede9fe;">📋</div>
+                <div class="mod-title">Advanced Analytics</div>
+                <div class="mod-desc">AGM defensibility score, DAX pay distribution, succession cost estimate & model drift.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_dc};">{f'{def_score:.0f}/100' if def_score else '—'}</div>
+                    <div class="mod-statlbl">AGM Defensibility Score</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ Advanced Analytics", key="brd_s3", use_container_width=True):
+                st.session_state["board_section"] = "advanced"; st.rerun()
+
+    else:
+        if st.button("← Back to Overview", key="brd_back"):
+            st.session_state["board_section"] = None; st.rerun()
+
+        if _sec == "structure":
+            col_l, col_r = st.columns([3, 2], gap="large")
+            with col_l:
+                st.markdown(sec_html(f"Compensation Structure vs. DAX Average — {sel_year}",
+                    "Fixed / STI / LTI share compared to DAX peers — deviation > 15pp warrants discussion"), unsafe_allow_html=True)
+                if in_model and len(co_yr) > 0:
+                    fix_co  = float(co_yr["fixed_pct"].iloc[0]) if co_yr["fixed_pct"].notna().any() else None
+                    sti_co  = float(co_yr["sti_pct"].iloc[0]) if co_yr["sti_pct"].notna().any() else None
+                    lti_co  = float(co_yr["lti_pct"].iloc[0]) if co_yr["lti_pct"].notna().any() else None
+                    dax_yr  = df[df["year"] == sel_year]
+                    fix_dax = float(dax_yr["fixed_pct"].mean()) if "fixed_pct" in dax_yr.columns else None
+                    sti_dax = float(dax_yr["sti_pct"].mean()) if "sti_pct" in dax_yr.columns else None
+                    lti_dax = float(dax_yr["lti_pct"].mean()) if "lti_pct" in dax_yr.columns else None
+                    if all(v is not None for v in [fix_co, sti_co, lti_co, fix_dax, sti_dax, lti_dax]):
+                        cats = ["Fixed", "STI (Short-term)", "LTI (Long-term)"]
+                        fig = go.Figure()
+                        fig.add_trace(go.Bar(name=sel_co, x=cats, y=[fix_co, sti_co, lti_co],
+                            marker_color=ORANGE, text=[f"{v:.0f}%" for v in [fix_co, sti_co, lti_co]],
+                            textposition="outside"))
+                        fig.add_trace(go.Bar(name="DAX Average", x=cats, y=[fix_dax, sti_dax, lti_dax],
+                            marker_color="#94a3b8", text=[f"{v:.0f}%" for v in [fix_dax, sti_dax, lti_dax]],
+                            textposition="outside"))
+                        fig.update_layout(height=280, barmode="group", margin=dict(l=0, r=0, t=10, b=0),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            yaxis=dict(title="Share (%)", gridcolor=GRAYLT),
+                            legend=dict(orientation="h", yanchor="bottom", y=1.01))
+                        st.plotly_chart(fig, use_container_width=True)
+            with col_r:
+                st.markdown(sec_html("Peer Rank & Say-on-Pay Assessment"), unsafe_allow_html=True)
+                if in_model and len(co_yr) > 0:
+                    dax_yr  = df[df["year"] == sel_year]
+                    lti_co  = float(co_yr["lti_pct"].iloc[0]) if co_yr["lti_pct"].notna().any() else None
+                    sti_co  = float(co_yr["sti_pct"].iloc[0]) if co_yr["sti_pct"].notna().any() else None
+                    fix_co  = float(co_yr["fixed_pct"].iloc[0]) if co_yr["fixed_pct"].notna().any() else None
+                    rows = [
+                        ("DAX Rank", f"#{rank} of {len(year_mu)}" if rank else "—", NAVY),
+                        ("Percentile", f"Top {100-pctile:.0f}%" if pctile else "—", ORANGE),
+                        ("Fixed vs. DAX avg", f"{fix_co:.0f}% vs. {dax_yr['fixed_pct'].mean():.0f}%" if fix_co else "—",
+                         RED if fix_co and abs(fix_co - dax_yr["fixed_pct"].mean()) > 15 else GRAY),
+                        ("STI vs. DAX avg", f"{sti_co:.0f}% vs. {dax_yr['sti_pct'].mean():.0f}%" if sti_co else "—", GRAY),
+                        ("LTI vs. DAX avg", f"{lti_co:.0f}% vs. {dax_yr['lti_pct'].mean():.0f}%" if lti_co else "—",
+                         RED if lti_co and abs(lti_co - dax_yr["lti_pct"].mean()) > 15 else GRAY),
+                        ("Say-on-Pay Risk", "🔴 High — >+15% above model" if aep and aep > 15 else "🟢 Low", RED if aep and aep > 15 else GREEN),
+                    ]
+                    st.markdown('<div style="background:white;border-radius:12px;padding:14px 16px;border:1px solid #e2e8f0;">', unsafe_allow_html=True)
+                    for lbl, val, col_c in rows:
+                        st.markdown(f'<div class="metric-row"><span style="color:{GRAY};">{lbl}</span>'
+                                    f'<span style="font-weight:700;color:{col_c};">{val}</span></div>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.info(f"Detailed structure data not available for {sel_co}.")
+            if in_model and len(co_df) > 0 and all(c in co_df.columns for c in ["fixed_pct", "sti_pct", "lti_pct"]):
+                st.markdown(sec_html("Compensation Structure Over Time",
+                    "Shifting LTI share signals evolving governance standards — rising LTI aligns with long-term value creation"), unsafe_allow_html=True)
+                fig3 = go.Figure()
+                fig3.add_trace(go.Bar(name="Fixed", x=co_df["year"], y=co_df["fixed_pct"], marker_color="#3b82f6"))
+                fig3.add_trace(go.Bar(name="STI", x=co_df["year"], y=co_df["sti_pct"], marker_color=ORANGE))
+                fig3.add_trace(go.Bar(name="LTI", x=co_df["year"], y=co_df["lti_pct"], marker_color=NAVY))
+                fig3.update_layout(barmode="stack", height=240, margin=dict(l=0, r=0, t=10, b=0),
                     plot_bgcolor="white", paper_bgcolor="white",
-                    yaxis=dict(title="Share (%)", gridcolor=GRAYLT),
+                    yaxis=dict(title="Share (%)", range=[0, 100], gridcolor=GRAYLT),
+                    xaxis=dict(gridcolor=GRAYLT),
                     legend=dict(orientation="h", yanchor="bottom", y=1.01))
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig3, use_container_width=True)
 
-    with col_r:
-        st.markdown(sec_html("Peer Rank & Say-on-Pay Assessment"), unsafe_allow_html=True)
-        if in_model and len(co_yr) > 0:
-            dax_yr  = df[df["year"] == sel_year]
-            lti_co  = float(co_yr["lti_pct"].iloc[0]) if co_yr["lti_pct"].notna().any() else None
-            sti_co  = float(co_yr["sti_pct"].iloc[0]) if co_yr["sti_pct"].notna().any() else None
-            fix_co  = float(co_yr["fixed_pct"].iloc[0]) if co_yr["fixed_pct"].notna().any() else None
-            rows = [
-                ("DAX Rank", f"#{rank} of {len(year_mu)}" if rank else "—", NAVY),
-                ("Percentile", f"Top {100-pctile:.0f}%" if pctile else "—", ORANGE),
-                ("Fixed vs. DAX avg", f"{fix_co:.0f}% vs. {dax_yr['fixed_pct'].mean():.0f}%" if fix_co else "—",
-                 RED if fix_co and abs(fix_co - dax_yr["fixed_pct"].mean()) > 15 else GRAY),
-                ("STI vs. DAX avg", f"{sti_co:.0f}% vs. {dax_yr['sti_pct'].mean():.0f}%" if sti_co else "—", GRAY),
-                ("LTI vs. DAX avg", f"{lti_co:.0f}% vs. {dax_yr['lti_pct'].mean():.0f}%" if lti_co else "—",
-                 RED if lti_co and abs(lti_co - dax_yr["lti_pct"].mean()) > 15 else GRAY),
-                ("Say-on-Pay Risk", "🔴 High — >+15% above model" if aep and aep > 15 else "🟢 Low", RED if aep and aep > 15 else GREEN),
-            ]
-            st.markdown('<div style="background:white;border-radius:12px;padding:14px 16px;border:1px solid #e2e8f0;">', unsafe_allow_html=True)
-            for lbl, val, col_c in rows:
-                st.markdown(f'<div class="metric-row"><span style="color:{GRAY};">{lbl}</span>'
-                            f'<span style="font-weight:700;color:{col_c};">{val}</span></div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.info(f"Detailed structure data not available for {sel_co}.")
+        elif _sec == "gov_risk":
+            st.markdown(sec_html("Governance Risk Timeline",
+                "Composite risk score (0–100) per year — above 60 = high risk, above 40 = elevated"), unsafe_allow_html=True)
+            if in_model and "anomaly_score_pct" in co_df.columns and len(co_df) > 0:
+                fig_gr = go.Figure()
+                fig_gr.add_trace(go.Scatter(x=co_df["year"], y=co_df["anomaly_score_pct"],
+                    fill="tozeroy", fillcolor="rgba(220,38,38,.08)",
+                    line=dict(color=RED, width=2), mode="lines+markers", marker=dict(size=5),
+                    name="Risk Score"))
+                fig_gr.add_hline(y=60, line_dash="dot", line_color=RED, line_width=1,
+                    annotation_text="High Risk", annotation_font=dict(size=8, color=RED))
+                fig_gr.add_hline(y=40, line_dash="dot", line_color=AMBER, line_width=1)
+                fig_gr.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    yaxis=dict(range=[0, 105], gridcolor=GRAYLT, title="Risk Score (0–100)"),
+                    xaxis=dict(gridcolor=GRAYLT))
+                st.plotly_chart(fig_gr, use_container_width=True)
+            else:
+                st.info(f"Governance risk data not available for {sel_co}.")
 
-    if in_model and len(co_df) > 0 and all(c in co_df.columns for c in ["fixed_pct", "sti_pct", "lti_pct"]):
-        st.markdown(sec_html("Compensation Structure Over Time",
-            "Shifting LTI share signals evolving governance standards — rising LTI aligns with long-term value creation"), unsafe_allow_html=True)
-        fig3 = go.Figure()
-        fig3.add_trace(go.Bar(name="Fixed", x=co_df["year"], y=co_df["fixed_pct"], marker_color="#3b82f6"))
-        fig3.add_trace(go.Bar(name="STI", x=co_df["year"], y=co_df["sti_pct"], marker_color=ORANGE))
-        fig3.add_trace(go.Bar(name="LTI", x=co_df["year"], y=co_df["lti_pct"], marker_color=NAVY))
-        fig3.update_layout(barmode="stack", height=240, margin=dict(l=0, r=0, t=10, b=0),
-            plot_bgcolor="white", paper_bgcolor="white",
-            yaxis=dict(title="Share (%)", range=[0, 100], gridcolor=GRAYLT),
-            xaxis=dict(gridcolor=GRAYLT),
-            legend=dict(orientation="h", yanchor="bottom", y=1.01))
-        st.plotly_chart(fig3, use_container_width=True)
+        elif _sec == "advanced":
+            st.markdown(sec_html("Advanced Benchmarking & Decision Support",
+                "P25/P50/P75 positioning · AGM defensibility score · model drift · succession cost estimate"), unsafe_allow_html=True)
 
-    # ── Advanced Board & HR metrics ────────────────────────────────
-    st.markdown(sec_html("Advanced Benchmarking & Decision Support",
-        "P25/P50/P75 positioning · AGM defensibility score · model drift · succession cost estimate"), unsafe_allow_html=True)
+            co_mu_all = mu[mu["company_shortname"] == sel_co].sort_values("year")
+            actual_comp = float(co_mu_yr["total_comp_bt"].iloc[0]) if len(co_mu_yr) > 0 and co_mu_yr["total_comp_bt"].notna().any() else None
+            year_comps = mu[mu["year"] == sel_year]["total_comp_bt"].dropna()
+            p25 = float(year_comps.quantile(0.25)) if len(year_comps) > 0 else None
+            p50 = float(year_comps.quantile(0.50)) if len(year_comps) > 0 else None
+            p75 = float(year_comps.quantile(0.75)) if len(year_comps) > 0 else None
+            sector_co = co_df["sector"].iloc[0] if len(co_df) > 0 and "sector" in co_df.columns else None
+            per_exec_co = float(co_yr["comp_per_exec"].iloc[0]) if len(co_yr) > 0 and "comp_per_exec" in co_yr.columns and co_yr["comp_per_exec"].notna().any() else (actual_comp / n_exec if actual_comp and n_exec else None)
+            per_exec_sector = float(dax_yr_full[dax_yr_full["sector"] == sector_co]["comp_per_exec"].median()) if sector_co and "comp_per_exec" in dax_yr_full.columns else None
+            drift_slope = None
+            aep_series = co_mu_all.dropna(subset=["actual_vs_expected_pct"])
+            if len(aep_series) > 4:
+                drift_slope = float(np.polyfit(range(len(aep_series)), aep_series["actual_vs_expected_pct"].values, 1)[0])
+            succ_plus1, succ_minus1 = None, None
+            pred_val = float(co_mu_yr["pred_comp"].iloc[0]) if len(co_mu_yr) > 0 and co_mu_yr["pred_comp"].notna().any() else None
+            if pred_val and n_exec and len(coefs) > 0:
+                coef_row = coefs[coefs["feature"] == "log_board_size"]
+                if len(coef_row) > 0:
+                    eff_pct = float(coef_row["exp_effect_pct"].iloc[0])
+                    raw_beta = np.log(1 + eff_pct / 100)
+                    succ_plus1  = pred_val * np.exp(raw_beta * (np.log(n_exec + 1) - np.log(n_exec)))
+                    succ_minus1 = pred_val * np.exp(raw_beta * (np.log(max(1, n_exec - 1)) - np.log(n_exec)))
 
-    co_mu_all = mu[mu["company_shortname"] == sel_co].sort_values("year")
-    actual_comp = float(co_mu_yr["total_comp_bt"].iloc[0]) if len(co_mu_yr) > 0 and co_mu_yr["total_comp_bt"].notna().any() else None
+            b1, b2, b3, b4 = st.columns(4)
+            with b1:
+                pos_lbl = "At P75 (top quartile)" if actual_comp and p75 and actual_comp > p75 else \
+                          "At P50–P75" if actual_comp and p50 and actual_comp > p50 else \
+                          "At P25–P50" if actual_comp and p25 and actual_comp > p25 else "Below P25"
+                pos_col = RED if actual_comp and p75 and actual_comp > p75 else ORANGE if actual_comp and p50 and actual_comp > p50 else GREEN
+                st.markdown(kpi_html(f"P{int(pctile)}" if pctile else "—", "DAX Percentile Position", pos_lbl, pos_col, pos_col,
+                    info="Exact percentile of this company's total compensation in the DAX distribution for the selected year, with P25/P50/P75 quartile boundaries. Compensation committees typically target P50–P75 to attract talent without triggering governance pushback."), unsafe_allow_html=True)
+            with b2:
+                st.markdown(kpi_html(f"€{per_exec_co:.0f}K" if per_exec_co else "—", "Comp per Exec Member",
+                    f"Sector med. €{per_exec_sector:.0f}K" if per_exec_sector else f"Board of {n_exec}" if n_exec else "—",
+                    RED if per_exec_co and per_exec_sector and per_exec_co > per_exec_sector * 1.25 else GREEN if per_exec_co else GRAY,
+                    RED if per_exec_co and per_exec_sector and per_exec_co > per_exec_sector * 1.25 else GREEN if per_exec_co else GRAY,
+                    info="Average compensation per executive board member, compared to the sector median. Values >25% above sector median suggest the company is setting a generous per-head baseline, which compounds with board size to drive total cost."), unsafe_allow_html=True)
+            with b3:
+                def_col = GREEN if def_score and def_score > 65 else AMBER if def_score and def_score > 40 else RED if def_score else GRAY
+                def_lbl = "✅ Highly defensible" if def_score and def_score > 65 else "⚠ Moderate risk" if def_score and def_score > 40 else "⚠ Hard to defend" if def_score else "—"
+                st.markdown(kpi_html(f"{def_score:.0f}/100" if def_score else "—", "AGM Defensibility Score",
+                    def_lbl, def_col, def_col,
+                    info="Composite score (0–100) estimating how easily the compensation committee can defend this pay package at the AGM. Combines: closeness to model expectation (40pts), DAX rank position (30pts), and structural consistency vs. peers (30pts)."), unsafe_allow_html=True)
+            with b4:
+                drift_col = RED if drift_slope and drift_slope > 2 else GREEN if drift_slope and drift_slope < -2 else GRAY
+                drift_lbl = "⚠ Drifting above model" if drift_slope and drift_slope > 2 else "✅ Moving toward model" if drift_slope and drift_slope < -2 else "Stable"
+                st.markdown(kpi_html(f"{drift_slope:+.1f}pp/yr" if drift_slope is not None else "—", "Model Deviation Drift",
+                    drift_lbl, drift_col, drift_col,
+                    info="Year-over-year trend in the deviation from model expectation (pp/year). A rising drift means pay is progressively exceeding the model's fair value over time — a warning sign that compensation practices are decoupling from fundamentals."), unsafe_allow_html=True)
 
-    # DAX percentile distribution for the year
-    year_comps = mu[mu["year"] == sel_year]["total_comp_bt"].dropna()
-    p25 = float(year_comps.quantile(0.25)) if len(year_comps) > 0 else None
-    p50 = float(year_comps.quantile(0.50)) if len(year_comps) > 0 else None
-    p75 = float(year_comps.quantile(0.75)) if len(year_comps) > 0 else None
-
-    # Sector-adjusted comp per exec
-    dax_yr_full = df[df["year"] == sel_year]
-    sector_co = co_df["sector"].iloc[0] if len(co_df) > 0 and "sector" in co_df.columns else None
-    per_exec_co = float(co_yr["comp_per_exec"].iloc[0]) if len(co_yr) > 0 and "comp_per_exec" in co_yr.columns and co_yr["comp_per_exec"].notna().any() else (actual_comp / n_exec if actual_comp and n_exec else None)
-    per_exec_sector = float(dax_yr_full[dax_yr_full["sector"] == sector_co]["comp_per_exec"].median()) if sector_co and "comp_per_exec" in dax_yr_full.columns else None
-
-    # AGM defensibility score (0–100, higher = more defensible)
-    def_score = None
-    if aep is not None and pctile is not None:
-        dev_pts = max(0, min(40, 40 - abs(aep) * 0.5))   # 40 pts if on model, 0 if >80% off
-        rank_pts = min(30, (1 - (rank / len(year_mu) if rank and len(year_mu) > 0 else 0.5)) * 30)  # near median = good
-        # Structure alignment: avg distance from DAX avg for each component
-        if in_model and len(co_yr) > 0:
-            dists = []
-            for col_ in ["fixed_pct", "sti_pct", "lti_pct"]:
-                if col_ in co_yr.columns and col_ in dax_yr_full.columns and co_yr[col_].notna().any():
-                    dists.append(abs(float(co_yr[col_].iloc[0]) - dax_yr_full[col_].mean()))
-            struct_pts = max(0, 30 - (np.mean(dists) * 0.5 if dists else 15))
-        else:
-            struct_pts = 15
-        def_score = dev_pts + rank_pts + struct_pts
-
-    # Model drift slope (pp/yr in actual_vs_expected_pct)
-    drift_slope = None
-    aep_series = co_mu_all.dropna(subset=["actual_vs_expected_pct"])
-    if len(aep_series) > 4:
-        drift_slope = float(np.polyfit(range(len(aep_series)), aep_series["actual_vs_expected_pct"].values, 1)[0])
-
-    # Succession cost estimate using log_board_size coefficient
-    succ_plus1, succ_minus1 = None, None
-    pred_val = float(co_mu_yr["pred_comp"].iloc[0]) if len(co_mu_yr) > 0 and co_mu_yr["pred_comp"].notna().any() else None
-    if pred_val and n_exec and len(coefs) > 0:
-        coef_row = coefs[coefs["feature"] == "log_board_size"]
-        if len(coef_row) > 0:
-            eff_pct = float(coef_row["exp_effect_pct"].iloc[0])
-            raw_beta = np.log(1 + eff_pct / 100)
-            succ_plus1  = pred_val * np.exp(raw_beta * (np.log(n_exec + 1) - np.log(n_exec)))
-            succ_minus1 = pred_val * np.exp(raw_beta * (np.log(max(1, n_exec - 1)) - np.log(n_exec)))
-
-    b1, b2, b3, b4 = st.columns(4)
-    with b1:
-        pos_lbl = "At P75 (top quartile)" if actual_comp and p75 and actual_comp > p75 else \
-                  "At P50–P75" if actual_comp and p50 and actual_comp > p50 else \
-                  "At P25–P50" if actual_comp and p25 and actual_comp > p25 else "Below P25"
-        pos_col = RED if actual_comp and p75 and actual_comp > p75 else ORANGE if actual_comp and p50 and actual_comp > p50 else GREEN
-        st.markdown(kpi_html(
-            f"P{int(pctile)}" if pctile else "—", "DAX Percentile Position", pos_lbl, pos_col, pos_col,
-            info="Exact percentile of this company's total compensation in the DAX distribution for the selected year, with P25/P50/P75 quartile boundaries. Compensation committees typically target P50–P75 to attract talent without triggering governance pushback."), unsafe_allow_html=True)
-    with b2:
-        st.markdown(kpi_html(
-            f"€{per_exec_co:.0f}K" if per_exec_co else "—", "Comp per Exec Member",
-            f"Sector med. €{per_exec_sector:.0f}K" if per_exec_sector else f"Board of {n_exec}" if n_exec else "—",
-            RED if per_exec_co and per_exec_sector and per_exec_co > per_exec_sector * 1.25 else GREEN if per_exec_co else GRAY,
-            RED if per_exec_co and per_exec_sector and per_exec_co > per_exec_sector * 1.25 else GREEN if per_exec_co else GRAY,
-            info="Average compensation per executive board member, compared to the sector median. Values >25% above sector median suggest the company is setting a generous per-head baseline, which compounds with board size to drive total cost."), unsafe_allow_html=True)
-    with b3:
-        def_col = GREEN if def_score and def_score > 65 else AMBER if def_score and def_score > 40 else RED if def_score else GRAY
-        def_lbl = "✅ Highly defensible" if def_score and def_score > 65 else "⚠ Moderate risk" if def_score and def_score > 40 else "⚠ Hard to defend" if def_score else "—"
-        st.markdown(kpi_html(
-            f"{def_score:.0f}/100" if def_score else "—", "AGM Defensibility Score",
-            def_lbl, def_col, def_col,
-            info="Composite score (0–100) estimating how easily the compensation committee can defend this pay package at the AGM. Combines: closeness to model expectation (40pts), DAX rank position (30pts), and structural consistency vs. peers (30pts)."), unsafe_allow_html=True)
-    with b4:
-        drift_col = RED if drift_slope and drift_slope > 2 else GREEN if drift_slope and drift_slope < -2 else GRAY
-        drift_lbl = "⚠ Drifting above model" if drift_slope and drift_slope > 2 else "✅ Moving toward model" if drift_slope and drift_slope < -2 else "Stable"
-        st.markdown(kpi_html(
-            f"{drift_slope:+.1f}pp/yr" if drift_slope is not None else "—", "Model Deviation Drift",
-            drift_lbl, drift_col, drift_col,
-            info="Year-over-year trend in the deviation from model expectation (pp/year). A rising drift means pay is progressively exceeding the model's fair value over time — a warning sign that compensation practices are decoupling from fundamentals."), unsafe_allow_html=True)
-
-    # P25/P50/P75 chart + succession cost
-    col_pct, col_succ = st.columns(2, gap="large")
-    with col_pct:
-        st.markdown(sec_html(f"DAX Compensation Distribution — {sel_year}",
-            "Where does this company sit in the full DAX distribution?"), unsafe_allow_html=True)
-        if len(year_comps) > 0:
-            fig_dist = go.Figure()
-            fig_dist.add_trace(go.Histogram(x=year_comps, nbinsx=15,
-                marker_color="#e2e8f0", name="DAX Distribution"))
-            if actual_comp:
-                fig_dist.add_vline(x=actual_comp, line_color=ORANGE, line_width=2.5,
-                    annotation_text=sel_co, annotation_font=dict(color=ORANGE, size=9))
-            for val, lbl, col_v in [(p25, "P25", "#94a3b8"), (p50, "P50", GRAY), (p75, "P75", NAVY)]:
-                if val:
-                    fig_dist.add_vline(x=val, line_color=col_v, line_width=1, line_dash="dot",
-                        annotation_text=lbl, annotation_font=dict(color=col_v, size=8))
-            fig_dist.update_layout(height=240, margin=dict(l=0, r=0, t=10, b=0),
-                plot_bgcolor="white", paper_bgcolor="white",
-                xaxis=dict(title="Total Comp. (€K)", gridcolor=GRAYLT),
-                yaxis=dict(title="# Companies", gridcolor=GRAYLT),
-                showlegend=False)
-            st.plotly_chart(fig_dist, use_container_width=True)
-            if p25 and p50 and p75:
-                st.markdown(f'<div style="font-size:.78rem;color:{GRAY};text-align:center;">P25: €{p25/1000:.1f}M &nbsp;·&nbsp; P50: €{p50/1000:.1f}M &nbsp;·&nbsp; P75: €{p75/1000:.1f}M</div>', unsafe_allow_html=True)
-
-    with col_succ:
-        st.markdown(sec_html("Board Size Scenario (Succession Cost Estimate)",
-            "Model-implied total compensation if board grows or shrinks by one member"), unsafe_allow_html=True)
-        if succ_plus1 and succ_minus1 and pred_val:
-            fig_succ = go.Figure(go.Bar(
-                x=[f"n–1 ({n_exec - 1} members)", f"Current (n={n_exec})", f"n+1 ({n_exec + 1} members)"],
-                y=[succ_minus1, pred_val, succ_plus1],
-                marker_color=["#3b82f6", ORANGE, RED],
-                text=[f"€{v/1000:.1f}M" for v in [succ_minus1, pred_val, succ_plus1]],
-                textposition="outside"))
-            fig_succ.update_layout(height=240, margin=dict(l=0, r=0, t=10, b=40),
-                plot_bgcolor="white", paper_bgcolor="white",
-                yaxis=dict(title="Expected Comp. (€K)", gridcolor=GRAYLT),
-                showlegend=False)
-            st.plotly_chart(fig_succ, use_container_width=True)
-            delta_up   = succ_plus1 - pred_val
-            delta_down = pred_val - succ_minus1
-            st.markdown(f'<div style="font-size:.78rem;color:{GRAY};text-align:center;">+1 member adds est. <strong style="color:{RED};">€{delta_up/1000:.1f}M</strong> · −1 member saves est. <strong style="color:{GREEN};">€{delta_down/1000:.1f}M</strong></div>', unsafe_allow_html=True)
-        else:
-            st.info("Succession scenario requires model prediction data.")
+            col_pct, col_succ = st.columns(2, gap="large")
+            with col_pct:
+                st.markdown(sec_html(f"DAX Compensation Distribution — {sel_year}",
+                    "Where does this company sit in the full DAX distribution?"), unsafe_allow_html=True)
+                if len(year_comps) > 0:
+                    fig_dist = go.Figure()
+                    fig_dist.add_trace(go.Histogram(x=year_comps, nbinsx=15, marker_color="#e2e8f0", name="DAX Distribution"))
+                    if actual_comp:
+                        fig_dist.add_vline(x=actual_comp, line_color=ORANGE, line_width=2.5,
+                            annotation_text=sel_co, annotation_font=dict(color=ORANGE, size=9))
+                    for val, lbl, col_v in [(p25, "P25", "#94a3b8"), (p50, "P50", GRAY), (p75, "P75", NAVY)]:
+                        if val:
+                            fig_dist.add_vline(x=val, line_color=col_v, line_width=1, line_dash="dot",
+                                annotation_text=lbl, annotation_font=dict(color=col_v, size=8))
+                    fig_dist.update_layout(height=240, margin=dict(l=0, r=0, t=10, b=0),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        xaxis=dict(title="Total Comp. (€K)", gridcolor=GRAYLT),
+                        yaxis=dict(title="# Companies", gridcolor=GRAYLT), showlegend=False)
+                    st.plotly_chart(fig_dist, use_container_width=True)
+                    if p25 and p50 and p75:
+                        st.markdown(f'<div style="font-size:.78rem;color:{GRAY};text-align:center;">P25: €{p25/1000:.1f}M &nbsp;·&nbsp; P50: €{p50/1000:.1f}M &nbsp;·&nbsp; P75: €{p75/1000:.1f}M</div>', unsafe_allow_html=True)
+            with col_succ:
+                st.markdown(sec_html("Board Size Scenario (Succession Cost Estimate)",
+                    "Model-implied total compensation if board grows or shrinks by one member"), unsafe_allow_html=True)
+                if succ_plus1 and succ_minus1 and pred_val:
+                    fig_succ = go.Figure(go.Bar(
+                        x=[f"n–1 ({n_exec - 1} members)", f"Current (n={n_exec})", f"n+1 ({n_exec + 1} members)"],
+                        y=[succ_minus1, pred_val, succ_plus1],
+                        marker_color=["#3b82f6", ORANGE, RED],
+                        text=[f"€{v/1000:.1f}M" for v in [succ_minus1, pred_val, succ_plus1]],
+                        textposition="outside"))
+                    fig_succ.update_layout(height=240, margin=dict(l=0, r=0, t=10, b=40),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        yaxis=dict(title="Expected Comp. (€K)", gridcolor=GRAYLT), showlegend=False)
+                    st.plotly_chart(fig_succ, use_container_width=True)
+                    delta_up   = succ_plus1 - pred_val
+                    delta_down = pred_val - succ_minus1
+                    st.markdown(f'<div style="font-size:.78rem;color:{GRAY};text-align:center;">+1 member adds est. <strong style="color:{RED};">€{delta_up/1000:.1f}M</strong> · −1 member saves est. <strong style="color:{GREEN};">€{delta_down/1000:.1f}M</strong></div>', unsafe_allow_html=True)
+                else:
+                    st.info("Succession scenario requires model prediction data.")
 
 
 # ─────────────────────────────────────────────
@@ -2168,8 +2324,9 @@ def show_employees_labor():
         fairness_gap = (avg_yoy - avg_empl) if avg_yoy and avg_empl and pd.notna(avg_empl) else None
         co_esg_latest = co_esg.iloc[[-1]] if len(co_esg) > 0 else pd.DataFrame()
         w_ratio = float(co_esg_latest["ceo_worker_ratio"].iloc[0]) if len(co_esg_latest) > 0 and "ceo_worker_ratio" in co_esg_latest.columns and co_esg_latest["ceo_worker_ratio"].notna().any() else None
+        gov_sc  = float(co_df["anomaly_score_pct"].mean()) if "anomaly_score_pct" in co_df.columns and co_df["anomaly_score_pct"].notna().any() else None
 
-        k1, k2, k3, k4 = st.columns(4)
+        k1, k2, k3, k4, k5 = st.columns(5)
         with k1: st.markdown(kpi_html(str(sz_cnt), "Bad Times Events",
             "⚠ Pay ↑ while EBIT+Jobs ↓" if sz_cnt > 0 else "✅ None detected",
             RED if sz_cnt > 0 else GREEN, RED if sz_cnt > 0 else GREEN,
@@ -2192,140 +2349,192 @@ def show_employees_labor():
             RED if w_ratio and w_ratio > 60 else AMBER if w_ratio and w_ratio > 40 else NAVY,
             RED if w_ratio and w_ratio > 60 else AMBER if w_ratio and w_ratio > 40 else GRAY,
             info="CEO total compensation divided by the median employee wage. Required disclosure under CSRD. The DAX average is around 50–80x; values above 100x are outliers. High ratios correlate with lower employee satisfaction and are a reputational risk."), unsafe_allow_html=True)
+        with k5: st.markdown(kpi_html(f"{gov_sc:.0f}/100" if gov_sc else "—", "Governance Risk",
+            "⚠ High Risk" if gov_sc and gov_sc > 60 else "✅ Normal",
+            risk_color(gov_sc or 0), risk_color(gov_sc or 0),
+            info="Composite governance risk score (0–100) averaged over all available years. High scores indicate systemic pay-for-performance failures relevant to Works Council and labor negotiations."), unsafe_allow_html=True)
 
-        col_l, col_r = st.columns([3, 2], gap="large")
-        with col_l:
-            st.markdown(sec_html("Exec Pay Growth vs. Headcount Growth",
-                "Orange line = exec comp growth · Blue bars = headcount growth · Red shading = Bad Times years"), unsafe_allow_html=True)
-            if "empl_yoy_pct" in co_df.columns:
-                co_clean = co_df.dropna(subset=["comp_yoy_pct", "empl_yoy_pct"])
-                fig = go.Figure()
-                fig.add_trace(go.Bar(x=co_clean["year"], y=co_clean["empl_yoy_pct"].clip(-50, 50),
-                    name="Headcount Growth %", marker_color="#3b82f6", opacity=0.7))
-                fig.add_trace(go.Scatter(x=co_clean["year"], y=co_clean["comp_yoy_pct"].clip(-100, 150),
-                    line=dict(color=ORANGE, width=2.5), mode="lines+markers", marker=dict(size=6),
-                    name="Exec Pay Growth %"))
-                fig.add_hline(y=0, line_color=GRAY, line_width=1)
-                if "schlechte_zeiten" in co_df.columns:
-                    for yr in co_df[co_df["schlechte_zeiten"] == 1]["year"].tolist():
-                        fig.add_vrect(x0=yr - 0.4, x1=yr + 0.4, fillcolor="rgba(220,38,38,.12)",
-                            line_width=0, annotation_text="BT", annotation_font=dict(size=7, color=RED))
-                fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    yaxis=dict(title="Growth (%)", gridcolor=GRAYLT),
-                    xaxis=dict(gridcolor=GRAYLT),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.01),
-                    hovermode="x unified")
-                st.plotly_chart(fig, use_container_width=True)
+        # ── Section panel ───────────────────────────────────────────────
+        _sec = st.session_state.get("employees_section", None)
 
-        with col_r:
-            st.markdown(sec_html("Bad Times Events"), unsafe_allow_html=True)
-            if "schlechte_zeiten" in co_df.columns:
-                sz_rows = co_df[co_df["schlechte_zeiten"] == 1]
-                if len(sz_rows) > 0:
-                    for _, row in sz_rows.iterrows():
-                        ebit_s = f"EBIT: {row['ebit_yoy_pct']:+.1f}% · " if "ebit_yoy_pct" in row.index and pd.notna(row.get("ebit_yoy_pct")) else ""
-                        empl_s = f"Headcount: {row['empl_yoy_pct']:+.1f}%" if "empl_yoy_pct" in row.index and pd.notna(row.get("empl_yoy_pct")) else ""
-                        st.markdown(f"""<div class="flag-red">
-                            <strong>Year {int(row['year'])}:</strong> Exec Pay {row['comp_yoy_pct']:+.1f}%
-                            &nbsp;·&nbsp; {ebit_s}{empl_s}
-                        </div>""", unsafe_allow_html=True)
-                else:
-                    st.markdown('<div class="flag-green">✅ No Bad Times events detected.</div>', unsafe_allow_html=True)
-
-        if len(esg) > 0 and "ceo_worker_ratio" in esg.columns:
-            st.markdown(sec_html("CEO/Worker Pay Ratio — DAX Comparison",
-                "Latest available year per company · Orange = selected company"), unsafe_allow_html=True)
-            latest_rat = (esg.sort_values("year").groupby("company_shortname").last()
-                          .reset_index()[["company_shortname", "ceo_worker_ratio"]]
-                          .sort_values("ceo_worker_ratio", ascending=True).dropna())
-            if len(latest_rat) > 0:
-                colors_r = [ORANGE if c == sel_co else (RED if v > 65 else AMBER if v > 45 else "#94a3b8")
-                            for c, v in zip(latest_rat["company_shortname"], latest_rat["ceo_worker_ratio"])]
-                fig_r = go.Figure(go.Bar(
-                    x=latest_rat["ceo_worker_ratio"], y=latest_rat["company_shortname"],
-                    orientation="h", marker_color=colors_r,
-                    text=[f"{v:.0f}x" for v in latest_rat["ceo_worker_ratio"]],
-                    textposition="outside", textfont=dict(size=8),
-                    hovertemplate="%{y}: %{x:.0f}x<extra></extra>"))
-                med = latest_rat["ceo_worker_ratio"].median()
-                fig_r.add_vline(x=med, line_dash="dot", line_color=GRAY, line_width=1.5,
-                    annotation_text=f"Median {med:.0f}x", annotation_font=dict(size=8, color=GRAY))
-                fig_r.update_layout(height=440, margin=dict(l=0, r=0, t=10, b=0),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    xaxis=dict(title="Exec/Worker Pay (x)", gridcolor=GRAYLT),
-                    yaxis=dict(tickfont=dict(size=9)))
-                st.plotly_chart(fig_r, use_container_width=True)
-
-        # ── Advanced Labor metrics ──────────────────────────────────────
-        st.markdown(sec_html("Cumulative Divergence, Pay-Headcount Elasticity & Restructuring Flag",
-            "Long-run fairness signals across the full data period"), unsafe_allow_html=True)
-
-        col_div, col_ela = st.columns([3, 2], gap="large")
-        with col_div:
-            st.markdown(sec_html("Cumulative Indexed Growth — Exec Pay vs. Headcount",
-                "Base 100 = first common year · gap between lines = accumulated fairness divergence"), unsafe_allow_html=True)
-            if "empl_yoy_pct" in co_df.columns and "comp_yoy_pct" in co_df.columns:
-                idx_df = co_df.dropna(subset=["comp_yoy_pct", "empl_yoy_pct"]).sort_values("year").copy()
-                idx_df["comp_idx"] = np.cumprod(1 + idx_df["comp_yoy_pct"].clip(-60, 120) / 100) * 100
-                idx_df["empl_idx"] = np.cumprod(1 + idx_df["empl_yoy_pct"].clip(-30, 30) / 100) * 100
-                final_gap = float(idx_df["comp_idx"].iloc[-1] - idx_df["empl_idx"].iloc[-1]) if len(idx_df) > 0 else None
-                fig_div = go.Figure()
-                fig_div.add_trace(go.Scatter(x=idx_df["year"], y=idx_df["empl_idx"],
-                    line=dict(color="#3b82f6", width=2), mode="lines",
-                    name="Headcount Index", hovertemplate="Headcount: %{y:.0f}<extra></extra>"))
-                fig_div.add_trace(go.Scatter(x=idx_df["year"], y=idx_df["comp_idx"],
-                    line=dict(color=ORANGE, width=2.5), mode="lines",
-                    fill="tonexty", fillcolor="rgba(249,115,22,.07)",
-                    name="Exec Pay Index", hovertemplate="Exec Pay: %{y:.0f}<extra></extra>"))
-                fig_div.add_hline(y=100, line_color=GRAY, line_width=1, line_dash="dot",
-                    annotation_text="Base 100", annotation_font=dict(size=8))
-                fig_div.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    yaxis=dict(title="Index (Base 100)", gridcolor=GRAYLT),
-                    xaxis=dict(gridcolor=GRAYLT),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.01),
-                    hovermode="x unified")
-                st.plotly_chart(fig_div, use_container_width=True)
-                if final_gap is not None:
-                    gap_col = RED if final_gap > 50 else AMBER if final_gap > 20 else GREEN
-                    st.markdown(f'<div class="flag-{"red" if final_gap > 50 else "amber" if final_gap > 20 else "green"}">'
-                                f'Cumulative divergence: exec pay index is <strong>{final_gap:+.0f} points</strong> above the headcount index over this period.</div>', unsafe_allow_html=True)
-
-        with col_ela:
-            st.markdown(sec_html("Pay-Headcount Elasticity"), unsafe_allow_html=True)
-            ela_df = co_df.dropna(subset=["comp_yoy_pct", "empl_yoy_pct"])
-            if len(ela_df) > 4:
-                beta_ela = float(np.polyfit(ela_df["empl_yoy_pct"].clip(-30, 30),
-                                            ela_df["comp_yoy_pct"].clip(-60, 120), 1)[0])
-                corr_ela = float(ela_df["comp_yoy_pct"].corr(ela_df["empl_yoy_pct"]))
-                ela_col = RED if beta_ela < -0.3 else AMBER if beta_ela < 0.1 else GREEN
-                ela_lbl = "⚠ Pay rises as jobs fall" if beta_ela < -0.3 else "⚠ Weak coupling" if beta_ela < 0.1 else "✅ Co-moves with employment"
-                st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-bottom:10px;">
-                    <div style="font-size:2.2rem;font-weight:800;color:{ela_col};line-height:1;">{beta_ela:.2f}</div>
-                    <div style="font-size:.68rem;color:#94a3b8;text-transform:uppercase;margin-top:4px;">Pay-Headcount Elasticity β</div>
-                    <div style="font-size:.78rem;color:{ela_col};margin-top:6px;font-weight:600;">{ela_lbl}</div>
-                    <div style="font-size:.72rem;color:#64748b;margin-top:4px;">r = {corr_ela:.2f}</div>
+        if _sec is None:
+            st.markdown('<div class="sec"><div class="sec-title">Dive Deeper — Select an Analysis Area</div><div class="sec-sub">Hover ⓘ on any metric above for context · click a card to explore</div></div>', unsafe_allow_html=True)
+            sc1, sc2, sc3 = st.columns(3, gap="medium")
+            with sc1:
+                _sc = RED if sz_cnt > 0 else GREEN
+                st.markdown(f"""<div class="mod-card">
+                    <div class="mod-icon-wrap" style="background:#fee2e2;">👷</div>
+                    <div class="mod-title">Pay vs. Jobs</div>
+                    <div class="mod-desc">Pay growth vs. headcount growth timeline with Bad Times events highlighted in red.</div>
+                    <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                        <div class="mod-stat" style="color:{_sc};">{sz_cnt} event{'s' if sz_cnt != 1 else ''}</div>
+                        <div class="mod-statlbl">Bad Times Events</div>
+                    </div>
                 </div>""", unsafe_allow_html=True)
-                st.markdown(f'<div style="font-size:.76rem;color:{GRAY};line-height:1.55;">Interpretation: when headcount grows by 1%, exec pay moves by <strong>{beta_ela:.2f}%</strong>. A negative β means executive pay tends to rise precisely when the workforce shrinks.</div>', unsafe_allow_html=True)
+                if st.button("→ Pay vs. Jobs", key="emp_s1", use_container_width=True):
+                    st.session_state["employees_section"] = "pay_jobs"; st.rerun()
+            with sc2:
+                _wc = RED if w_ratio and w_ratio > 60 else AMBER if w_ratio and w_ratio > 40 else NAVY
+                st.markdown(f"""<div class="mod-card">
+                    <div class="mod-icon-wrap" style="background:#fef9c3;">💰</div>
+                    <div class="mod-title">CEO/Worker Ratio</div>
+                    <div class="mod-desc">DAX-wide comparison of executive-to-worker pay ratios — income inequality across the index.</div>
+                    <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                        <div class="mod-stat" style="color:{_wc};">{f'{w_ratio:.0f}x' if w_ratio else '—'}</div>
+                        <div class="mod-statlbl">Exec/Worker Pay Ratio</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+                if st.button("→ CEO/Worker Ratio", key="emp_s2", use_container_width=True):
+                    st.session_state["employees_section"] = "ceo_worker"; st.rerun()
+            with sc3:
+                _fc = RED if fairness_gap and fairness_gap > 50 else AMBER if fairness_gap and fairness_gap > 20 else GREEN
+                st.markdown(f"""<div class="mod-card">
+                    <div class="mod-icon-wrap" style="background:#f0fdf4;">📊</div>
+                    <div class="mod-title">Long-run Fairness</div>
+                    <div class="mod-desc">Cumulative indexed divergence between exec pay and headcount — pay-headcount elasticity & restructuring flags.</div>
+                    <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                        <div class="mod-stat" style="color:{RED if fairness_gap and fairness_gap > 5 else GREEN};">{f'{fairness_gap:+.1f}pp' if fairness_gap is not None else '—'}</div>
+                        <div class="mod-statlbl">Pay vs. Headcount gap</div>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+                if st.button("→ Long-run Fairness", key="emp_s3", use_container_width=True):
+                    st.session_state["employees_section"] = "fairness"; st.rerun()
 
-            # Restructuring-bonus flag
-            st.markdown(sec_html("Restructuring-Bonus Flag", "Years with headcount cuts ≥ 2%"), unsafe_allow_html=True)
-            restr = co_df[co_df["empl_yoy_pct"] < -2].copy() if "empl_yoy_pct" in co_df.columns else pd.DataFrame()
-            if len(restr) > 0:
-                bonus_col_name = "one_year_bonus_bt" if "one_year_bonus_bt" in restr.columns else None
-                restr["bonus_up"] = False
-                if bonus_col_name:
-                    restr["bonus_prev"] = restr[bonus_col_name].shift(1)
-                    restr["bonus_up"] = restr[bonus_col_name] > restr["bonus_prev"]
-                for _, row in restr.iterrows():
-                    empl_s = f"Headcount: {row['empl_yoy_pct']:+.1f}%"
-                    comp_s = f"Exec Pay: {row['comp_yoy_pct']:+.1f}%"
-                    bonus_flag = " · 🚨 Bonus ↑" if row.get("bonus_up", False) else ""
-                    sev = "flag-red" if row.get("bonus_up", False) or (row["comp_yoy_pct"] > 0) else "flag-amber"
-                    st.markdown(f'<div class="{sev}"><strong>{int(row["year"])}:</strong> {empl_s} · {comp_s}{bonus_flag}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="flag-green">✅ No major restructuring years (headcount cut ≥2%) detected.</div>', unsafe_allow_html=True)
+        else:
+            if st.button("← Back to Overview", key="emp_back"):
+                st.session_state["employees_section"] = None; st.rerun()
+
+            if _sec == "pay_jobs":
+                col_l, col_r = st.columns([3, 2], gap="large")
+                with col_l:
+                    st.markdown(sec_html("Exec Pay Growth vs. Headcount Growth",
+                        "Orange line = exec comp growth · Blue bars = headcount growth · Red shading = Bad Times years"), unsafe_allow_html=True)
+                    if "empl_yoy_pct" in co_df.columns:
+                        co_clean = co_df.dropna(subset=["comp_yoy_pct", "empl_yoy_pct"])
+                        fig = go.Figure()
+                        fig.add_trace(go.Bar(x=co_clean["year"], y=co_clean["empl_yoy_pct"].clip(-50, 50),
+                            name="Headcount Growth %", marker_color="#3b82f6", opacity=0.7))
+                        fig.add_trace(go.Scatter(x=co_clean["year"], y=co_clean["comp_yoy_pct"].clip(-100, 150),
+                            line=dict(color=ORANGE, width=2.5), mode="lines+markers", marker=dict(size=6),
+                            name="Exec Pay Growth %"))
+                        fig.add_hline(y=0, line_color=GRAY, line_width=1)
+                        if "schlechte_zeiten" in co_df.columns:
+                            for yr in co_df[co_df["schlechte_zeiten"] == 1]["year"].tolist():
+                                fig.add_vrect(x0=yr - 0.4, x1=yr + 0.4, fillcolor="rgba(220,38,38,.12)",
+                                    line_width=0, annotation_text="BT", annotation_font=dict(size=7, color=RED))
+                        fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            yaxis=dict(title="Growth (%)", gridcolor=GRAYLT),
+                            xaxis=dict(gridcolor=GRAYLT),
+                            legend=dict(orientation="h", yanchor="bottom", y=1.01),
+                            hovermode="x unified")
+                        st.plotly_chart(fig, use_container_width=True)
+                with col_r:
+                    st.markdown(sec_html("Bad Times Events"), unsafe_allow_html=True)
+                    if "schlechte_zeiten" in co_df.columns:
+                        sz_rows = co_df[co_df["schlechte_zeiten"] == 1]
+                        if len(sz_rows) > 0:
+                            for _, row in sz_rows.iterrows():
+                                ebit_s = f"EBIT: {row['ebit_yoy_pct']:+.1f}% · " if "ebit_yoy_pct" in row.index and pd.notna(row.get("ebit_yoy_pct")) else ""
+                                empl_s = f"Headcount: {row['empl_yoy_pct']:+.1f}%" if "empl_yoy_pct" in row.index and pd.notna(row.get("empl_yoy_pct")) else ""
+                                st.markdown(f"""<div class="flag-red">
+                                    <strong>Year {int(row['year'])}:</strong> Exec Pay {row['comp_yoy_pct']:+.1f}%
+                                    &nbsp;·&nbsp; {ebit_s}{empl_s}
+                                </div>""", unsafe_allow_html=True)
+                        else:
+                            st.markdown('<div class="flag-green">✅ No Bad Times events detected.</div>', unsafe_allow_html=True)
+
+            elif _sec == "ceo_worker":
+                if len(esg) > 0 and "ceo_worker_ratio" in esg.columns:
+                    st.markdown(sec_html("CEO/Worker Pay Ratio — DAX Comparison",
+                        "Latest available year per company · Orange = selected company"), unsafe_allow_html=True)
+                    latest_rat = (esg.sort_values("year").groupby("company_shortname").last()
+                                  .reset_index()[["company_shortname", "ceo_worker_ratio"]]
+                                  .sort_values("ceo_worker_ratio", ascending=True).dropna())
+                    if len(latest_rat) > 0:
+                        colors_r = [ORANGE if c == sel_co else (RED if v > 65 else AMBER if v > 45 else "#94a3b8")
+                                    for c, v in zip(latest_rat["company_shortname"], latest_rat["ceo_worker_ratio"])]
+                        fig_r = go.Figure(go.Bar(
+                            x=latest_rat["ceo_worker_ratio"], y=latest_rat["company_shortname"],
+                            orientation="h", marker_color=colors_r,
+                            text=[f"{v:.0f}x" for v in latest_rat["ceo_worker_ratio"]],
+                            textposition="outside", textfont=dict(size=8),
+                            hovertemplate="%{y}: %{x:.0f}x<extra></extra>"))
+                        med = latest_rat["ceo_worker_ratio"].median()
+                        fig_r.add_vline(x=med, line_dash="dot", line_color=GRAY, line_width=1.5,
+                            annotation_text=f"Median {med:.0f}x", annotation_font=dict(size=8, color=GRAY))
+                        fig_r.update_layout(height=440, margin=dict(l=0, r=0, t=10, b=0),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            xaxis=dict(title="Exec/Worker Pay (x)", gridcolor=GRAYLT),
+                            yaxis=dict(tickfont=dict(size=9)))
+                        st.plotly_chart(fig_r, use_container_width=True)
+                else:
+                    st.info("CEO/Worker ratio data not available.")
+
+            elif _sec == "fairness":
+                st.markdown(sec_html("Cumulative Divergence, Pay-Headcount Elasticity & Restructuring Flag",
+                    "Long-run fairness signals across the full data period"), unsafe_allow_html=True)
+                col_div, col_ela = st.columns([3, 2], gap="large")
+                with col_div:
+                    st.markdown(sec_html("Cumulative Indexed Growth — Exec Pay vs. Headcount",
+                        "Base 100 = first common year · gap between lines = accumulated fairness divergence"), unsafe_allow_html=True)
+                    if "empl_yoy_pct" in co_df.columns and "comp_yoy_pct" in co_df.columns:
+                        idx_df = co_df.dropna(subset=["comp_yoy_pct", "empl_yoy_pct"]).sort_values("year").copy()
+                        idx_df["comp_idx"] = np.cumprod(1 + idx_df["comp_yoy_pct"].clip(-60, 120) / 100) * 100
+                        idx_df["empl_idx"] = np.cumprod(1 + idx_df["empl_yoy_pct"].clip(-30, 30) / 100) * 100
+                        final_gap = float(idx_df["comp_idx"].iloc[-1] - idx_df["empl_idx"].iloc[-1]) if len(idx_df) > 0 else None
+                        fig_div = go.Figure()
+                        fig_div.add_trace(go.Scatter(x=idx_df["year"], y=idx_df["empl_idx"],
+                            line=dict(color="#3b82f6", width=2), mode="lines",
+                            name="Headcount Index", hovertemplate="Headcount: %{y:.0f}<extra></extra>"))
+                        fig_div.add_trace(go.Scatter(x=idx_df["year"], y=idx_df["comp_idx"],
+                            line=dict(color=ORANGE, width=2.5), mode="lines",
+                            fill="tonexty", fillcolor="rgba(249,115,22,.07)",
+                            name="Exec Pay Index", hovertemplate="Exec Pay: %{y:.0f}<extra></extra>"))
+                        fig_div.add_hline(y=100, line_color=GRAY, line_width=1, line_dash="dot",
+                            annotation_text="Base 100", annotation_font=dict(size=8))
+                        fig_div.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            yaxis=dict(title="Index (Base 100)", gridcolor=GRAYLT),
+                            xaxis=dict(gridcolor=GRAYLT),
+                            legend=dict(orientation="h", yanchor="bottom", y=1.01),
+                            hovermode="x unified")
+                        st.plotly_chart(fig_div, use_container_width=True)
+                        if final_gap is not None:
+                            st.markdown(f'<div class="flag-{"red" if final_gap > 50 else "amber" if final_gap > 20 else "green"}">'
+                                        f'Cumulative divergence: exec pay index is <strong>{final_gap:+.0f} points</strong> above the headcount index over this period.</div>', unsafe_allow_html=True)
+                with col_ela:
+                    st.markdown(sec_html("Pay-Headcount Elasticity"), unsafe_allow_html=True)
+                    ela_df = co_df.dropna(subset=["comp_yoy_pct", "empl_yoy_pct"])
+                    if len(ela_df) > 4:
+                        beta_ela = float(np.polyfit(ela_df["empl_yoy_pct"].clip(-30, 30),
+                                                    ela_df["comp_yoy_pct"].clip(-60, 120), 1)[0])
+                        corr_ela = float(ela_df["comp_yoy_pct"].corr(ela_df["empl_yoy_pct"]))
+                        ela_col = RED if beta_ela < -0.3 else AMBER if beta_ela < 0.1 else GREEN
+                        ela_lbl = "⚠ Pay rises as jobs fall" if beta_ela < -0.3 else "⚠ Weak coupling" if beta_ela < 0.1 else "✅ Co-moves with employment"
+                        st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-bottom:10px;">
+                            <div style="font-size:2.2rem;font-weight:800;color:{ela_col};line-height:1;">{beta_ela:.2f}</div>
+                            <div style="font-size:.68rem;color:#94a3b8;text-transform:uppercase;margin-top:4px;">Pay-Headcount Elasticity β</div>
+                            <div style="font-size:.78rem;color:{ela_col};margin-top:6px;font-weight:600;">{ela_lbl}</div>
+                            <div style="font-size:.72rem;color:#64748b;margin-top:4px;">r = {corr_ela:.2f}</div>
+                        </div>""", unsafe_allow_html=True)
+                        st.markdown(f'<div style="font-size:.76rem;color:{GRAY};line-height:1.55;">Interpretation: when headcount grows by 1%, exec pay moves by <strong>{beta_ela:.2f}%</strong>. A negative β means executive pay tends to rise precisely when the workforce shrinks.</div>', unsafe_allow_html=True)
+                    st.markdown(sec_html("Restructuring-Bonus Flag", "Years with headcount cuts ≥ 2%"), unsafe_allow_html=True)
+                    restr = co_df[co_df["empl_yoy_pct"] < -2].copy() if "empl_yoy_pct" in co_df.columns else pd.DataFrame()
+                    if len(restr) > 0:
+                        bonus_col_name = "one_year_bonus_bt" if "one_year_bonus_bt" in restr.columns else None
+                        restr["bonus_up"] = False
+                        if bonus_col_name:
+                            restr["bonus_prev"] = restr[bonus_col_name].shift(1)
+                            restr["bonus_up"] = restr[bonus_col_name] > restr["bonus_prev"]
+                        for _, row in restr.iterrows():
+                            empl_s = f"Headcount: {row['empl_yoy_pct']:+.1f}%"
+                            comp_s = f"Exec Pay: {row['comp_yoy_pct']:+.1f}%"
+                            bonus_flag = " · 🚨 Bonus ↑" if row.get("bonus_up", False) else ""
+                            sev = "flag-red" if row.get("bonus_up", False) or (row["comp_yoy_pct"] > 0) else "flag-amber"
+                            st.markdown(f'<div class="{sev}"><strong>{int(row["year"])}:</strong> {empl_s} · {comp_s}{bonus_flag}</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div class="flag-green">✅ No major restructuring years (headcount cut ≥2%) detected.</div>', unsafe_allow_html=True)
 
     else:
         st.info(f"Detailed feature data not available for {sel_co}.")
@@ -2371,7 +2580,18 @@ def show_accountability_actors():
     lti_esg = float(co_esg_latest["lti_esg_share"].iloc[0]) if len(co_esg_latest) > 0 and "lti_esg_share" in co_esg_latest.columns and co_esg_latest["lti_esg_share"].notna().any() else None
     esg_tot = (sti_esg or 0) + (lti_esg or 0)
 
-    k1, k2, k3, k4 = st.columns(4)
+    # Pre-compute proxy score for section card
+    gov_sc_acc = float(co_df["anomaly_score_pct"].mean()) if in_model and "anomaly_score_pct" in co_df.columns and co_df["anomaly_score_pct"].notna().any() else None
+    ceo_prem_acc = float(co_df["ceo_board_premium_ratio"].mean()) if in_model and "ceo_board_premium_ratio" in co_df.columns and co_df["ceo_board_premium_ratio"].notna().any() else None
+    proxy_score_pre = 0
+    if aep is not None:  proxy_score_pre += min(35, max(0, aep * 0.5))
+    proxy_score_pre += min(25, sz_cnt * 8)
+    if is_anom:          proxy_score_pre += 20
+    if esg_tot == 0:     proxy_score_pre += 15
+    if ceo_prem_acc and ceo_prem_acc > 2.5: proxy_score_pre += min(5, (ceo_prem_acc - 2.5) * 3)
+    proxy_score_pre = min(100, proxy_score_pre)
+
+    k1, k2, k3, k4, k5 = st.columns(5)
     with k1: st.markdown(kpi_html(
         f"{aep:+.0f}%" if aep is not None else "—", "vs. Model Expectation",
         "⚠ Significant Outlier" if aep and aep > 40 else "Above market" if aep and aep > 15 else "Normal",
@@ -2393,179 +2613,199 @@ def show_accountability_actors():
         "⚠ ESG Pay-Washing Risk" if esg_tot == 0 else "CSRD-relevant",
         RED if esg_tot == 0 else ORANGE, RED if esg_tot == 0 else GREEN,
         info="Combined ESG-linked share of variable pay (STI + LTI). Zero ESG link is increasingly untenable under CSRD and signals potential 'pay-washing' — where sustainability claims in annual reports are not backed by actual incentive structures."), unsafe_allow_html=True)
+    with k5: st.markdown(kpi_html(f"{gov_sc_acc:.0f}/100" if gov_sc_acc else "—", "Governance Risk",
+        "⚠ High Risk" if gov_sc_acc and gov_sc_acc > 60 else "✅ Normal",
+        risk_color(gov_sc_acc or 0), risk_color(gov_sc_acc or 0),
+        info="Composite governance risk score (0–100) averaged over all available years. Used by proxy advisors and activists to flag companies with systemic pay governance failures."), unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([3, 2], gap="large")
-    with col_l:
-        st.markdown(sec_html(f"DAX Overpayment Ranking — {sel_year}",
-            "Companies sorted by excess pay vs. model — navy = selected company · red = significant outlier"), unsafe_allow_html=True)
-        mu_yr = mu[mu["year"] == sel_year].dropna(subset=["actual_vs_expected_pct"]).sort_values("actual_vs_expected_pct", ascending=False)
-        if len(mu_yr) > 0:
-            bar_colors = [NAVY if c == sel_co else (RED if v > 40 else AMBER if v > 15 else "#4ade80" if v > -15 else "#2563eb")
-                          for c, v in zip(mu_yr["company_shortname"], mu_yr["actual_vs_expected_pct"])]
-            fig = go.Figure(go.Bar(
-                x=mu_yr["actual_vs_expected_pct"], y=mu_yr["company_shortname"],
-                orientation="h", marker_color=bar_colors,
-                text=[f"{v:+.0f}%" for v in mu_yr["actual_vs_expected_pct"]],
-                textposition="outside", textfont=dict(size=7),
-                hovertemplate="%{y}: %{x:+.1f}%<extra></extra>"))
-            fig.add_vline(x=40, line_dash="dot", line_color=RED, line_width=1,
-                annotation_text="Outlier Threshold +40%", annotation_font=dict(size=7, color=RED))
-            fig.add_vline(x=0, line_color=GRAY, line_width=1)
-            fig.update_layout(height=500, margin=dict(l=0, r=0, t=10, b=30),
-                plot_bgcolor="white", paper_bgcolor="white",
-                xaxis=dict(title="Excess Pay vs. Model (%)", gridcolor=GRAYLT),
-                yaxis=dict(tickfont=dict(size=8)))
-            st.plotly_chart(fig, use_container_width=True)
+    # ── Section panel ───────────────────────────────────────────────
+    _sec = st.session_state.get("accountability_section", None)
 
-    with col_r:
-        st.markdown(sec_html("DAX-wide Bad Times Events (Top 10)"), unsafe_allow_html=True)
-        if "schlechte_zeiten" in df.columns:
-            sz_all = df[df["schlechte_zeiten"] == 1][
-                ["company_shortname", "year", "comp_yoy_pct", "schlechte_zeiten_score"]
-            ].sort_values("schlechte_zeiten_score", ascending=False).head(10)
-            if len(sz_all) > 0:
-                for _, row in sz_all.iterrows():
-                    sc  = float(row["schlechte_zeiten_score"]) if pd.notna(row.get("schlechte_zeiten_score")) else 0
-                    sev = "flag-red" if sc > 0.5 else "flag-amber"
-                    is_sel = row["company_shortname"] == sel_co
-                    bold_s = "font-weight:900;" if is_sel else ""
-                    st.markdown(f'<div class="{sev}" style="{bold_s}"><strong>{row["company_shortname"]} '
-                                f'({int(row["year"])}):</strong> Pay {row["comp_yoy_pct"]:+.1f}% · Severity {sc:.2f}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="flag-green">✅ No Bad Times events in dataset.</div>', unsafe_allow_html=True)
-
-        st.markdown(sec_html("ESG Pay Integration — DAX Summary"), unsafe_allow_html=True)
-        if len(esg) > 0:
-            recent = esg[esg["year"] >= 2022]
-            esg_bub = recent.groupby("company_shortname").agg(
-                sti=("sti_esg_share", "mean"), lti=("lti_esg_share", "mean")).reset_index().fillna(0)
-            esg_bub["total_esg"] = esg_bub["sti"] + esg_bub["lti"]
-            n_esg  = int((esg_bub["total_esg"] > 0).sum())
-            n_total = len(esg_bub)
-            st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-top:4px;">
-                <div style="font-size:2.2rem;font-weight:900;color:{ORANGE};line-height:1;">{n_esg}<span style="font-size:1.1rem;color:#64748b;">/{n_total}</span></div>
-                <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;margin-top:4px;">DAX Companies with ESG Pay Link</div>
-                <div style="font-size:.82rem;color:#f87171;margin-top:8px;font-weight:600;">⚠ {n_total - n_esg} of {n_total} still 0% ESG in pay</div>
+    if _sec is None:
+        st.markdown('<div class="sec"><div class="sec-title">Dive Deeper — Select an Analysis Area</div><div class="sec-sub">Hover ⓘ on any metric above for context · click a card to explore</div></div>', unsafe_allow_html=True)
+        sc1, sc2 = st.columns(2, gap="medium")
+        with sc1:
+            _ac = RED if aep and aep > 40 else AMBER if aep and aep > 15 else GREEN
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#fee2e2;">⚖️</div>
+                <div class="mod-title">Overpayment & Violations</div>
+                <div class="mod-desc">DAX-wide overpayment ranking, Bad Times event league table & ESG pay integration summary.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_ac};">{f'{aep:+.0f}%' if aep is not None else '—'}</div>
+                    <div class="mod-statlbl">vs. Model Expectation</div>
+                </div>
             </div>""", unsafe_allow_html=True)
+            if st.button("→ Overpayment & Violations", key="acc_s1", use_container_width=True):
+                st.session_state["accountability_section"] = "overpay"; st.rerun()
+        with sc2:
+            _pc = RED if proxy_score_pre > 65 else AMBER if proxy_score_pre > 35 else GREEN
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#fef3c7;">📋</div>
+                <div class="mod-title">Proxy Advisor Metrics</div>
+                <div class="mod-desc">ISS/Glass Lewis-style score breakdown, persistent offender streak & cumulative violations table.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_pc};">{proxy_score_pre:.0f}/100</div>
+                    <div class="mod-statlbl">Proxy Advisor Score</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ Proxy Advisor Metrics", key="acc_s2", use_container_width=True):
+                st.session_state["accountability_section"] = "proxy"; st.rerun()
 
-    # ── Advanced Accountability metrics ────────────────────────────
-    st.markdown(sec_html("Proxy Advisor Score · Persistent Offenders · Cumulative Violations · Anomaly Rate",
-        "Composite metrics used by ISS/Glass Lewis — DAX-wide violation league table"), unsafe_allow_html=True)
+    else:
+        if st.button("← Back to Overview", key="acc_back"):
+            st.session_state["accountability_section"] = None; st.rerun()
 
-    co_mu_all = mu[mu["company_shortname"] == sel_co].sort_values("year")
+        if _sec == "overpay":
+            col_l, col_r = st.columns([3, 2], gap="large")
+            with col_l:
+                st.markdown(sec_html(f"DAX Overpayment Ranking — {sel_year}",
+                    "Companies sorted by excess pay vs. model — navy = selected company · red = significant outlier"), unsafe_allow_html=True)
+                mu_yr = mu[mu["year"] == sel_year].dropna(subset=["actual_vs_expected_pct"]).sort_values("actual_vs_expected_pct", ascending=False)
+                if len(mu_yr) > 0:
+                    bar_colors = [NAVY if c == sel_co else (RED if v > 40 else AMBER if v > 15 else "#4ade80" if v > -15 else "#2563eb")
+                                  for c, v in zip(mu_yr["company_shortname"], mu_yr["actual_vs_expected_pct"])]
+                    fig = go.Figure(go.Bar(
+                        x=mu_yr["actual_vs_expected_pct"], y=mu_yr["company_shortname"],
+                        orientation="h", marker_color=bar_colors,
+                        text=[f"{v:+.0f}%" for v in mu_yr["actual_vs_expected_pct"]],
+                        textposition="outside", textfont=dict(size=7),
+                        hovertemplate="%{y}: %{x:+.1f}%<extra></extra>"))
+                    fig.add_vline(x=40, line_dash="dot", line_color=RED, line_width=1,
+                        annotation_text="Outlier Threshold +40%", annotation_font=dict(size=7, color=RED))
+                    fig.add_vline(x=0, line_color=GRAY, line_width=1)
+                    fig.update_layout(height=500, margin=dict(l=0, r=0, t=10, b=30),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        xaxis=dict(title="Excess Pay vs. Model (%)", gridcolor=GRAYLT),
+                        yaxis=dict(tickfont=dict(size=8)))
+                    st.plotly_chart(fig, use_container_width=True)
+            with col_r:
+                st.markdown(sec_html("DAX-wide Bad Times Events (Top 10)"), unsafe_allow_html=True)
+                if "schlechte_zeiten" in df.columns:
+                    sz_all = df[df["schlechte_zeiten"] == 1][
+                        ["company_shortname", "year", "comp_yoy_pct", "schlechte_zeiten_score"]
+                    ].sort_values("schlechte_zeiten_score", ascending=False).head(10)
+                    if len(sz_all) > 0:
+                        for _, row in sz_all.iterrows():
+                            sc  = float(row["schlechte_zeiten_score"]) if pd.notna(row.get("schlechte_zeiten_score")) else 0
+                            sev = "flag-red" if sc > 0.5 else "flag-amber"
+                            is_sel = row["company_shortname"] == sel_co
+                            bold_s = "font-weight:900;" if is_sel else ""
+                            st.markdown(f'<div class="{sev}" style="{bold_s}"><strong>{row["company_shortname"]} '
+                                        f'({int(row["year"])}):</strong> Pay {row["comp_yoy_pct"]:+.1f}% · Severity {sc:.2f}</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<div class="flag-green">✅ No Bad Times events in dataset.</div>', unsafe_allow_html=True)
+                st.markdown(sec_html("ESG Pay Integration — DAX Summary"), unsafe_allow_html=True)
+                if len(esg) > 0:
+                    recent = esg[esg["year"] >= 2022]
+                    esg_bub = recent.groupby("company_shortname").agg(
+                        sti=("sti_esg_share", "mean"), lti=("lti_esg_share", "mean")).reset_index().fillna(0)
+                    esg_bub["total_esg"] = esg_bub["sti"] + esg_bub["lti"]
+                    n_esg  = int((esg_bub["total_esg"] > 0).sum())
+                    n_total = len(esg_bub)
+                    st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-top:4px;">
+                        <div style="font-size:2.2rem;font-weight:900;color:{ORANGE};line-height:1;">{n_esg}<span style="font-size:1.1rem;color:#64748b;">/{n_total}</span></div>
+                        <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;margin-top:4px;">DAX Companies with ESG Pay Link</div>
+                        <div style="font-size:.82rem;color:#f87171;margin-top:8px;font-weight:600;">⚠ {n_total - n_esg} of {n_total} still 0% ESG in pay</div>
+                    </div>""", unsafe_allow_html=True)
 
-    # Persistent offender streak for selected company
-    persist_streak = 0
-    if "actual_vs_expected_pct" in co_mu_all.columns and co_mu_all["actual_vs_expected_pct"].notna().any():
-        curr_s = 0
-        for v in (co_mu_all["actual_vs_expected_pct"] > 15).fillna(False):
-            if v: curr_s += 1; persist_streak = max(persist_streak, curr_s)
-            else: curr_s = 0
+        elif _sec == "proxy":
+            co_mu_all = mu[mu["company_shortname"] == sel_co].sort_values("year")
+            persist_streak = 0
+            if "actual_vs_expected_pct" in co_mu_all.columns and co_mu_all["actual_vs_expected_pct"].notna().any():
+                curr_s = 0
+                for v in (co_mu_all["actual_vs_expected_pct"] > 15).fillna(False):
+                    if v: curr_s += 1; persist_streak = max(persist_streak, curr_s)
+                    else: curr_s = 0
+            anom_yrs  = int(co_df["is_anomaly"].sum()) if in_model and "is_anomaly" in co_df.columns else 0
+            anom_rate = float(co_df["is_anomaly"].mean() * 100) if in_model and "is_anomaly" in co_df.columns and len(co_df) > 0 else None
+            proxy_score = proxy_score_pre
+            proxy_lbl = "🔴 Recommend Against" if proxy_score > 65 else "🟡 Abstain" if proxy_score > 35 else "🟢 Support"
+            proxy_col = RED if proxy_score > 65 else AMBER if proxy_score > 35 else GREEN
 
-    # Anomaly persistence rate
-    anom_yrs  = int(co_df["is_anomaly"].sum()) if in_model and "is_anomaly" in co_df.columns else 0
-    anom_rate = float(co_df["is_anomaly"].mean() * 100) if in_model and "is_anomaly" in co_df.columns and len(co_df) > 0 else None
+            def _streak(series):
+                mx, cur = 0, 0
+                for v in series:
+                    if v: cur += 1; mx = max(mx, cur)
+                    else: cur = 0
+                return mx
 
-    # Proxy advisor red-flag score (0-100)
-    ceo_prem_acc = float(co_df["ceo_board_premium_ratio"].mean()) if in_model and "ceo_board_premium_ratio" in co_df.columns and co_df["ceo_board_premium_ratio"].notna().any() else None
-    proxy_score = 0
-    if aep is not None:        proxy_score += min(35, max(0, aep * 0.5))       # excess pay: up to 35 pts
-    proxy_score += min(25, sz_cnt * 8)                                           # bad times: 8 pts each, max 25
-    if is_anom:                proxy_score += 20                                 # anomaly flag: 20 pts
-    if esg_tot == 0:           proxy_score += 15                                 # zero ESG: 15 pts
-    if ceo_prem_acc and ceo_prem_acc > 2.5: proxy_score += min(5, (ceo_prem_acc - 2.5) * 3)
-    proxy_score = min(100, proxy_score)
-    proxy_lbl = "🔴 Recommend Against" if proxy_score > 65 else "🟡 Abstain" if proxy_score > 35 else "🟢 Support"
-    proxy_col = RED if proxy_score > 65 else AMBER if proxy_score > 35 else GREEN
+            mu_streaks = mu.dropna(subset=["actual_vs_expected_pct"]).groupby("company_shortname").apply(
+                lambda g: _streak((g.sort_values("year")["actual_vs_expected_pct"] > 15).values)).reset_index()
+            mu_streaks.columns = ["company_shortname", "max_streak"]
+            persistent_cos = mu_streaks[mu_streaks["max_streak"] >= 3].sort_values("max_streak", ascending=False)
 
-    # DAX-wide persistent offender calculation
-    def _streak(series):
-        mx, cur = 0, 0
-        for v in series:
-            if v: cur += 1; mx = max(mx, cur)
-            else: cur = 0
-        return mx
+            pa1, pa2, pa3, pa4 = st.columns(4)
+            with pa1: st.markdown(kpi_html(f"{proxy_score:.0f}/100", "Proxy Advisor Score",
+                proxy_lbl, proxy_col, proxy_col,
+                info="Proxy advisor concern score (0–100) modeled on ISS/Glass Lewis methodology. Combines: excess pay vs. model (up to 35pts), Bad Times count (up to 25pts), anomaly flag (20pts), zero ESG link (15pts), and extreme CEO premium (5pts). Scores above 50 typically trigger 'vote against' recommendations."), unsafe_allow_html=True)
+            with pa2: st.markdown(kpi_html(f"{persist_streak} yr{'s' if persist_streak != 1 else ''}",
+                "Longest Overpay Streak",
+                "⚠ Persistent offender" if persist_streak >= 3 else "⚠ Borderline" if persist_streak >= 2 else "✅ No pattern",
+                RED if persist_streak >= 3 else AMBER if persist_streak >= 2 else GREEN,
+                RED if persist_streak >= 3 else AMBER if persist_streak >= 2 else GREEN,
+                info="Longest consecutive run of years where pay exceeded the model expectation by more than +15%. Streaks ≥3 years are used by shareholder activists as evidence of a systemic governance failure rather than a one-off anomaly."), unsafe_allow_html=True)
+            with pa3: st.markdown(kpi_html(f"{anom_yrs} / {len(co_df)}",
+                "Anomaly Years",
+                f"{anom_rate:.0f}% of years flagged" if anom_rate is not None else "—",
+                RED if anom_rate and anom_rate > 40 else AMBER if anom_rate and anom_rate > 20 else GREEN if anom_rate is not None else GRAY,
+                RED if anom_rate and anom_rate > 40 else AMBER if anom_rate and anom_rate > 20 else GREEN if anom_rate is not None else GRAY,
+                info="Number of years flagged as statistical anomalies out of all years with data. A high anomaly rate (>40%) suggests systemic structural irregularities beyond isolated events, which may warrant a formal investigation or shareholder resolution."), unsafe_allow_html=True)
+            with pa4: st.markdown(kpi_html(str(len(persistent_cos)), "DAX Persistent Offenders",
+                "Companies ≥3 consecutive years >+15%",
+                RED if len(persistent_cos) > 5 else AMBER,
+                info="Number of DAX companies with a longest overpay streak of 3+ consecutive years above model expectation. Provides market context — if many companies are persistent offenders, it may indicate a systemic DAX-wide issue with governance norms."), unsafe_allow_html=True)
 
-    mu_streaks = mu.dropna(subset=["actual_vs_expected_pct"]).groupby("company_shortname").apply(
-        lambda g: _streak((g.sort_values("year")["actual_vs_expected_pct"] > 15).values)).reset_index()
-    mu_streaks.columns = ["company_shortname", "max_streak"]
-    persistent_cos = mu_streaks[mu_streaks["max_streak"] >= 3].sort_values("max_streak", ascending=False)
-
-    pa1, pa2, pa3, pa4 = st.columns(4)
-    with pa1: st.markdown(kpi_html(f"{proxy_score:.0f}/100", "Proxy Advisor Score",
-        proxy_lbl, proxy_col, proxy_col,
-        info="Proxy advisor concern score (0–100) modeled on ISS/Glass Lewis methodology. Combines: excess pay vs. model (up to 35pts), Bad Times count (up to 25pts), anomaly flag (20pts), zero ESG link (15pts), and extreme CEO premium (5pts). Scores above 50 typically trigger 'vote against' recommendations."), unsafe_allow_html=True)
-    with pa2: st.markdown(kpi_html(f"{persist_streak} yr{'s' if persist_streak != 1 else ''}",
-        "Longest Overpay Streak",
-        "⚠ Persistent offender" if persist_streak >= 3 else "⚠ Borderline" if persist_streak >= 2 else "✅ No pattern",
-        RED if persist_streak >= 3 else AMBER if persist_streak >= 2 else GREEN,
-        RED if persist_streak >= 3 else AMBER if persist_streak >= 2 else GREEN,
-        info="Longest consecutive run of years where pay exceeded the model expectation by more than +15%. Streaks ≥3 years are used by shareholder activists as evidence of a systemic governance failure rather than a one-off anomaly."), unsafe_allow_html=True)
-    with pa3: st.markdown(kpi_html(f"{anom_yrs} / {len(co_df)}",
-        "Anomaly Years",
-        f"{anom_rate:.0f}% of years flagged" if anom_rate is not None else "—",
-        RED if anom_rate and anom_rate > 40 else AMBER if anom_rate and anom_rate > 20 else GREEN if anom_rate is not None else GRAY,
-        RED if anom_rate and anom_rate > 40 else AMBER if anom_rate and anom_rate > 20 else GREEN if anom_rate is not None else GRAY,
-        info="Number of years flagged as statistical anomalies out of all years with data. A high anomaly rate (>40%) suggests systemic structural irregularities beyond isolated events, which may warrant a formal investigation or shareholder resolution."), unsafe_allow_html=True)
-    with pa4: st.markdown(kpi_html(str(len(persistent_cos)), "DAX Persistent Offenders",
-        "Companies ≥3 consecutive years >+15%",
-        RED if len(persistent_cos) > 5 else AMBER,
-        info="Number of DAX companies with a longest overpay streak of 3+ consecutive years above model expectation. Provides market context — if many companies are persistent offenders, it may indicate a systemic DAX-wide issue with governance norms."), unsafe_allow_html=True)
-
-    col_proxy, col_cum = st.columns([2, 3], gap="large")
-    with col_proxy:
-        st.markdown(sec_html("Proxy Advisor Score Breakdown",
-            "Mimics ISS/Glass Lewis methodology — higher = more likely to receive 'vote against' recommendation"), unsafe_allow_html=True)
-        components = {
-            "Excess Pay vs. Model": min(35, max(0, aep * 0.5) if aep else 0),
-            "Bad Times Events": min(25, sz_cnt * 8),
-            "Anomaly Flag": 20 if is_anom else 0,
-            "Zero ESG in Pay": 15 if esg_tot == 0 else 0,
-            "CEO Premium": min(5, (ceo_prem_acc - 2.5) * 3) if ceo_prem_acc and ceo_prem_acc > 2.5 else 0,
-        }
-        fig_proxy = go.Figure(go.Bar(
-            x=list(components.values()), y=list(components.keys()),
-            orientation="h",
-            marker_color=[RED if v > 10 else AMBER if v > 0 else "#e2e8f0" for v in components.values()],
-            text=[f"{v:.0f} pts" for v in components.values()], textposition="outside",
-            hovertemplate="%{y}: %{x:.0f} pts<extra></extra>"))
-        fig_proxy.add_vline(x=proxy_score, line_color=proxy_col, line_width=2, line_dash="dot",
-            annotation_text=f"Total: {proxy_score:.0f}", annotation_font=dict(color=proxy_col, size=9))
-        fig_proxy.update_layout(height=260, margin=dict(l=0, r=0, t=10, b=0),
-            plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="Points", range=[0, 40], gridcolor=GRAYLT),
-            yaxis=dict(tickfont=dict(size=9)))
-        st.plotly_chart(fig_proxy, use_container_width=True)
-
-    with col_cum:
-        st.markdown(sec_html("DAX Cumulative Bad Times Severity — All-Time League Table",
-            "Sum of schlechte_zeiten_score across all years · who are the chronic violators?"), unsafe_allow_html=True)
-        if "schlechte_zeiten_score" in df.columns:
-            cum_bt = df.groupby("company_shortname")["schlechte_zeiten_score"].sum().reset_index()
-            cum_bt = cum_bt[cum_bt["schlechte_zeiten_score"] > 0].sort_values("schlechte_zeiten_score", ascending=True)
-            if len(cum_bt) > 0:
-                bt_colors = [ORANGE if c == sel_co else (RED if v > 2 else AMBER if v > 1 else "#fde68a")
-                             for c, v in zip(cum_bt["company_shortname"], cum_bt["schlechte_zeiten_score"])]
-                fig_cum = go.Figure(go.Bar(
-                    x=cum_bt["schlechte_zeiten_score"], y=cum_bt["company_shortname"],
-                    orientation="h", marker_color=bt_colors,
-                    text=[f"{v:.2f}" for v in cum_bt["schlechte_zeiten_score"]],
-                    textposition="outside", textfont=dict(size=7),
-                    hovertemplate="%{y}: %{x:.2f}<extra></extra>"))
-                fig_cum.update_layout(height=max(300, len(cum_bt) * 22), margin=dict(l=0, r=0, t=10, b=0),
+            col_proxy, col_cum = st.columns([2, 3], gap="large")
+            with col_proxy:
+                st.markdown(sec_html("Proxy Advisor Score Breakdown",
+                    "Mimics ISS/Glass Lewis methodology — higher = more likely to receive 'vote against' recommendation"), unsafe_allow_html=True)
+                components = {
+                    "Excess Pay vs. Model": min(35, max(0, aep * 0.5) if aep else 0),
+                    "Bad Times Events": min(25, sz_cnt * 8),
+                    "Anomaly Flag": 20 if is_anom else 0,
+                    "Zero ESG in Pay": 15 if esg_tot == 0 else 0,
+                    "CEO Premium": min(5, (ceo_prem_acc - 2.5) * 3) if ceo_prem_acc and ceo_prem_acc > 2.5 else 0,
+                }
+                fig_proxy = go.Figure(go.Bar(
+                    x=list(components.values()), y=list(components.keys()),
+                    orientation="h",
+                    marker_color=[RED if v > 10 else AMBER if v > 0 else "#e2e8f0" for v in components.values()],
+                    text=[f"{v:.0f} pts" for v in components.values()], textposition="outside",
+                    hovertemplate="%{y}: %{x:.0f} pts<extra></extra>"))
+                fig_proxy.add_vline(x=proxy_score, line_color=proxy_col, line_width=2, line_dash="dot",
+                    annotation_text=f"Total: {proxy_score:.0f}", annotation_font=dict(color=proxy_col, size=9))
+                fig_proxy.update_layout(height=260, margin=dict(l=0, r=0, t=10, b=0),
                     plot_bgcolor="white", paper_bgcolor="white",
-                    xaxis=dict(title="Cumulative Severity Score", gridcolor=GRAYLT),
-                    yaxis=dict(tickfont=dict(size=8)))
-                st.plotly_chart(fig_cum, use_container_width=True)
-
-    # Persistent offenders table
-    if len(persistent_cos) > 0:
-        st.markdown(sec_html("DAX Persistent Offenders — ≥3 Consecutive Years Above +15% Model Expectation"), unsafe_allow_html=True)
-        po_display = persistent_cos.copy()
-        po_display["Is Selected"] = po_display["company_shortname"].apply(lambda x: "▶ " + x if x == sel_co else x)
-        st.dataframe(po_display[["Is Selected", "max_streak"]].rename(
-            columns={"Is Selected": "Company", "max_streak": "Longest Streak (years)"}
-        ).set_index("Company"), use_container_width=True)
+                    xaxis=dict(title="Points", range=[0, 40], gridcolor=GRAYLT),
+                    yaxis=dict(tickfont=dict(size=9)))
+                st.plotly_chart(fig_proxy, use_container_width=True)
+            with col_cum:
+                st.markdown(sec_html("DAX Cumulative Bad Times Severity — All-Time League Table",
+                    "Sum of schlechte_zeiten_score across all years · who are the chronic violators?"), unsafe_allow_html=True)
+                if "schlechte_zeiten_score" in df.columns:
+                    cum_bt = df.groupby("company_shortname")["schlechte_zeiten_score"].sum().reset_index()
+                    cum_bt = cum_bt[cum_bt["schlechte_zeiten_score"] > 0].sort_values("schlechte_zeiten_score", ascending=True)
+                    if len(cum_bt) > 0:
+                        bt_colors = [ORANGE if c == sel_co else (RED if v > 2 else AMBER if v > 1 else "#fde68a")
+                                     for c, v in zip(cum_bt["company_shortname"], cum_bt["schlechte_zeiten_score"])]
+                        fig_cum = go.Figure(go.Bar(
+                            x=cum_bt["schlechte_zeiten_score"], y=cum_bt["company_shortname"],
+                            orientation="h", marker_color=bt_colors,
+                            text=[f"{v:.2f}" for v in cum_bt["schlechte_zeiten_score"]],
+                            textposition="outside", textfont=dict(size=7),
+                            hovertemplate="%{y}: %{x:.2f}<extra></extra>"))
+                        fig_cum.update_layout(height=max(300, len(cum_bt) * 22), margin=dict(l=0, r=0, t=10, b=0),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            xaxis=dict(title="Cumulative Severity Score", gridcolor=GRAYLT),
+                            yaxis=dict(tickfont=dict(size=8)))
+                        st.plotly_chart(fig_cum, use_container_width=True)
+            if len(persistent_cos) > 0:
+                st.markdown(sec_html("DAX Persistent Offenders — ≥3 Consecutive Years Above +15% Model Expectation"), unsafe_allow_html=True)
+                po_display = persistent_cos.copy()
+                po_display["Is Selected"] = po_display["company_shortname"].apply(lambda x: "▶ " + x if x == sel_co else x)
+                st.dataframe(po_display[["Is Selected", "max_streak"]].rename(
+                    columns={"Is Selected": "Company", "max_streak": "Longest Streak (years)"}
+                ).set_index("Company"), use_container_width=True)
 
 
 # ─────────────────────────────────────────────
@@ -2610,7 +2850,10 @@ def show_consultants():
     sector  = co_df["sector"].iloc[0] if in_model and len(co_df) > 0 and "sector" in co_df.columns else "—"
     _, t_col, t_lbl = traffic(aep)
 
-    k1, k2, k3, k4 = st.columns(4)
+    gov_sc_con = float(co_df["anomaly_score_pct"].mean()) if in_model and "anomaly_score_pct" in co_df.columns and co_df["anomaly_score_pct"].notna().any() else None
+    pred_val = pred
+
+    k1, k2, k3, k4, k5 = st.columns(5)
     with k1: st.markdown(kpi_html(f"€{pred/1000:.1f}M" if pred else "—", "Model-Fair Comp.",
         f"OLS Estimate {sel_year}", NAVY,
         info="The OLS model's point estimate of 'fair' compensation given this company's size, sector, board size, year trend, and prior-year pay. This is the anchor for the compensation consultant's recommendation — the defensible midpoint."), unsafe_allow_html=True)
@@ -2623,232 +2866,252 @@ def show_consultants():
     with k4: st.markdown(kpi_html(str(sector), "Sector",
         "Sector-adjusted baseline", NAVY,
         info="The company's sector classification used in the OLS model. Sector dummies capture structural differences in pay norms (e.g., Financials and Technology tend to pay more). The model adjusts fair-value estimates accordingly."), unsafe_allow_html=True)
+    with k5: st.markdown(kpi_html(f"{gov_sc_con:.0f}/100" if gov_sc_con else "—", "Governance Risk",
+        "⚠ High Risk" if gov_sc_con and gov_sc_con > 60 else "✅ Normal",
+        risk_color(gov_sc_con or 0), risk_color(gov_sc_con or 0),
+        info="Composite governance risk score (0–100) averaged over all available years. High scores indicate structural pay anomalies that may require justification in remuneration reports."), unsafe_allow_html=True)
 
-    col_l, col_r = st.columns([3, 2], gap="large")
-    with col_l:
-        st.markdown(sec_html("Actual vs. Model Expectation Band",
-            "Orange band = 80% expectation interval · Navy line = actual compensation"), unsafe_allow_html=True)
-        if in_mu and len(co_mu_all) > 0 and co_mu_all["pred_comp"].notna().any():
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=list(co_mu_all["year"]) + list(co_mu_all["year"])[::-1],
-                y=list(co_mu_all["pred_comp_high"]) + list(co_mu_all["pred_comp_low"])[::-1],
-                fill="toself", fillcolor="rgba(249,115,22,.10)",
-                line=dict(color="rgba(0,0,0,0)"), name="80% Expectation Band"))
-            fig.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["pred_comp"],
-                line=dict(color=ORANGE, dash="dash", width=2), name="Model Expectation",
-                hovertemplate="Expected: €%{y:,.0f}K<extra></extra>"))
-            fig.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["total_comp_bt"],
-                line=dict(color=NAVY, width=3), mode="lines+markers", name="Actual",
-                hovertemplate="Actual: €%{y:,.0f}K<extra></extra>"))
-            fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0),
+    # ── Section panel ───────────────────────────────────────────────
+    _sec = st.session_state.get("consultants_section", None)
+
+    if _sec is None:
+        st.markdown('<div class="sec"><div class="sec-title">Dive Deeper — Select an Analysis Area</div><div class="sec-sub">Hover ⓘ on any metric above for context · click a card to explore</div></div>', unsafe_allow_html=True)
+        sc1, sc2 = st.columns(2, gap="medium")
+        with sc1:
+            _dc = t_col
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#eff6ff;">📐</div>
+                <div class="mod-title">Model Analysis</div>
+                <div class="mod-desc">Actual vs. model expectation band over time, sector peer pay structure comparison & OLS model drivers.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{_dc};">{f'€{pred/1000:.1f}M' if pred else '—'}</div>
+                    <div class="mod-statlbl">Model-Fair Comp. {sel_year}</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ Model Analysis", key="con_s1", use_container_width=True):
+                st.session_state["consultants_section"] = "model"; st.rerun()
+        with sc2:
+            st.markdown(f"""<div class="mod-card">
+                <div class="mod-icon-wrap" style="background:#f0fdf4;">🔬</div>
+                <div class="mod-title">Advanced Tools</div>
+                <div class="mod-desc">Model RMSE back-test, data-driven natural comparator group, pay stickiness & 3-year forecast.</div>
+                <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:auto;">
+                    <div class="mod-stat" style="color:{NAVY};">{f'{aep:+.0f}%' if aep is not None else '—'}</div>
+                    <div class="mod-statlbl">vs. Model Expectation</div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            if st.button("→ Advanced Tools", key="con_s2", use_container_width=True):
+                st.session_state["consultants_section"] = "advanced"; st.rerun()
+
+    else:
+        if st.button("← Back to Overview", key="con_back"):
+            st.session_state["consultants_section"] = None; st.rerun()
+
+        if _sec == "model":
+            col_l, col_r = st.columns([3, 2], gap="large")
+            with col_l:
+                st.markdown(sec_html("Actual vs. Model Expectation Band",
+                    "Orange band = 80% expectation interval · Navy line = actual compensation"), unsafe_allow_html=True)
+                if in_mu and len(co_mu_all) > 0 and co_mu_all["pred_comp"].notna().any():
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=list(co_mu_all["year"]) + list(co_mu_all["year"])[::-1],
+                        y=list(co_mu_all["pred_comp_high"]) + list(co_mu_all["pred_comp_low"])[::-1],
+                        fill="toself", fillcolor="rgba(249,115,22,.10)",
+                        line=dict(color="rgba(0,0,0,0)"), name="80% Expectation Band"))
+                    fig.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["pred_comp"],
+                        line=dict(color=ORANGE, dash="dash", width=2), name="Model Expectation",
+                        hovertemplate="Expected: €%{y:,.0f}K<extra></extra>"))
+                    fig.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["total_comp_bt"],
+                        line=dict(color=NAVY, width=3), mode="lines+markers", name="Actual",
+                        hovertemplate="Actual: €%{y:,.0f}K<extra></extra>"))
+                    fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        yaxis=dict(title="Total Compensation (€K)", gridcolor=GRAYLT),
+                        xaxis=dict(gridcolor=GRAYLT),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.01),
+                        hovermode="x unified")
+                    st.plotly_chart(fig, use_container_width=True)
+                    if pred_lo and pred_hi and pred:
+                        st.markdown(f"""<div style="background:{NAVY};border-radius:10px;padding:12px 16px;">
+                            <div style="font-size:.62rem;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Model Range {sel_year}</div>
+                            <div style="display:flex;justify-content:space-between;color:white;font-size:.84rem;">
+                                <span>Low: <strong>€{pred_lo/1000:.1f}M</strong></span>
+                                <span style="color:{ORANGE};">Estimate: <strong>€{pred/1000:.1f}M</strong></span>
+                                <span>High: <strong>€{pred_hi/1000:.1f}M</strong></span>
+                            </div>
+                        </div>""", unsafe_allow_html=True)
+            with col_r:
+                st.markdown(sec_html("Sector Peer Structure"), unsafe_allow_html=True)
+                if in_model and sector and sector != "—" and "sector" in df.columns:
+                    sect_yr = df[(df["sector"] == sector) & (df["year"] == sel_year)].dropna(subset=["fixed_pct", "sti_pct", "lti_pct"])
+                    if len(sect_yr) > 0:
+                        co_fix = float(co_yr["fixed_pct"].iloc[0]) if len(co_yr) > 0 and co_yr["fixed_pct"].notna().any() else None
+                        co_sti = float(co_yr["sti_pct"].iloc[0]) if len(co_yr) > 0 and co_yr["sti_pct"].notna().any() else None
+                        co_lti = float(co_yr["lti_pct"].iloc[0]) if len(co_yr) > 0 and co_yr["lti_pct"].notna().any() else None
+                        s_fix  = sect_yr["fixed_pct"].mean()
+                        s_sti  = sect_yr["sti_pct"].mean()
+                        s_lti  = sect_yr["lti_pct"].mean()
+                        rows = [
+                            ("Fixed Pay", f"{co_fix:.0f}%", f"Sector avg {s_fix:.0f}%",
+                             RED if co_fix and abs(co_fix - s_fix) > 12 else GRAY),
+                            ("STI Share", f"{co_sti:.0f}%", f"Sector avg {s_sti:.0f}%",
+                             RED if co_sti and abs(co_sti - s_sti) > 12 else GRAY),
+                            ("LTI Share", f"{co_lti:.0f}%", f"Sector avg {s_lti:.0f}%",
+                             RED if co_lti and abs(co_lti - s_lti) > 12 else GRAY),
+                            ("Sector Peers (N)", str(len(sect_yr)), f"{sel_year}", GRAY),
+                        ]
+                        st.markdown('<div style="background:white;border-radius:12px;padding:14px 16px;border:1px solid #e2e8f0;">', unsafe_allow_html=True)
+                        for lbl, val, ref, col_c in rows:
+                            st.markdown(f'<div class="metric-row"><span style="color:{GRAY};">{lbl}'
+                                        f'<br><span style="font-size:.7rem;color:#94a3b8;">{ref}</span></span>'
+                                        f'<span style="font-weight:700;color:{col_c};">{val}</span></div>', unsafe_allow_html=True)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.info(f"Sector data not available for {sel_co}.")
+            st.markdown(sec_html("Model Drivers — What Moves Compensation?",
+                "OLS coefficients: how strongly each factor shifts expected pay · back-test your proposal against these weights"), unsafe_allow_html=True)
+            top_c = coefs[coefs["feature"] != "intercept"].sort_values("exp_effect_pct", ascending=True).copy()
+            lbl_map = {"log_comp_lag1": "Prior-Year Pay (Stickiness)", "year_trend": "Year Trend", "log_board_size": "Board Size (log)"}
+            top_c["label"] = top_c["feature"].apply(lambda x: lbl_map.get(x, x.replace("sector_", "Sector: ").replace("_", " ")))
+            fig3 = go.Figure(go.Bar(
+                x=top_c["exp_effect_pct"], y=top_c["label"], orientation="h",
+                marker_color=[GREEN if v > 0 else RED for v in top_c["exp_effect_pct"]],
+                text=[f"{v:+.0f}%" for v in top_c["exp_effect_pct"]], textposition="outside",
+                hovertemplate="%{y}: %{x:+.0f}%<extra></extra>"))
+            fig3.update_layout(height=340, margin=dict(l=0, r=0, t=10, b=0),
                 plot_bgcolor="white", paper_bgcolor="white",
-                yaxis=dict(title="Total Compensation (€K)", gridcolor=GRAYLT),
-                xaxis=dict(gridcolor=GRAYLT),
-                legend=dict(orientation="h", yanchor="bottom", y=1.01),
-                hovermode="x unified")
-            st.plotly_chart(fig, use_container_width=True)
-            if pred_lo and pred_hi and pred:
-                st.markdown(f"""<div style="background:{NAVY};border-radius:10px;padding:12px 16px;">
-                    <div style="font-size:.62rem;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Model Range {sel_year}</div>
-                    <div style="display:flex;justify-content:space-between;color:white;font-size:.84rem;">
-                        <span>Low: <strong>€{pred_lo/1000:.1f}M</strong></span>
-                        <span style="color:{ORANGE};">Estimate: <strong>€{pred/1000:.1f}M</strong></span>
-                        <span>High: <strong>€{pred_hi/1000:.1f}M</strong></span>
-                    </div>
-                </div>""", unsafe_allow_html=True)
+                xaxis=dict(title="Effect on Compensation Level (%)", gridcolor=GRAYLT),
+                yaxis=dict(tickfont=dict(size=10)))
+            st.plotly_chart(fig3, use_container_width=True)
 
-    with col_r:
-        st.markdown(sec_html("Sector Peer Structure"), unsafe_allow_html=True)
-        if in_model and sector and sector != "—" and "sector" in df.columns:
-            sect_yr = df[(df["sector"] == sector) & (df["year"] == sel_year)].dropna(subset=["fixed_pct", "sti_pct", "lti_pct"])
-            if len(sect_yr) > 0:
-                co_fix = float(co_yr["fixed_pct"].iloc[0]) if len(co_yr) > 0 and co_yr["fixed_pct"].notna().any() else None
-                co_sti = float(co_yr["sti_pct"].iloc[0]) if len(co_yr) > 0 and co_yr["sti_pct"].notna().any() else None
-                co_lti = float(co_yr["lti_pct"].iloc[0]) if len(co_yr) > 0 and co_yr["lti_pct"].notna().any() else None
-                s_fix  = sect_yr["fixed_pct"].mean()
-                s_sti  = sect_yr["sti_pct"].mean()
-                s_lti  = sect_yr["lti_pct"].mean()
-                rows = [
-                    ("Fixed Pay", f"{co_fix:.0f}%", f"Sector avg {s_fix:.0f}%",
-                     RED if co_fix and abs(co_fix - s_fix) > 12 else GRAY),
-                    ("STI Share", f"{co_sti:.0f}%", f"Sector avg {s_sti:.0f}%",
-                     RED if co_sti and abs(co_sti - s_sti) > 12 else GRAY),
-                    ("LTI Share", f"{co_lti:.0f}%", f"Sector avg {s_lti:.0f}%",
-                     RED if co_lti and abs(co_lti - s_lti) > 12 else GRAY),
-                    ("Sector Peers (N)", str(len(sect_yr)), f"{sel_year}", GRAY),
-                ]
-                st.markdown('<div style="background:white;border-radius:12px;padding:14px 16px;border:1px solid #e2e8f0;">', unsafe_allow_html=True)
-                for lbl, val, ref, col_c in rows:
-                    st.markdown(f'<div class="metric-row"><span style="color:{GRAY};">{lbl}'
-                                f'<br><span style="font-size:.7rem;color:#94a3b8;">{ref}</span></span>'
-                                f'<span style="font-weight:700;color:{col_c};">{val}</span></div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.info(f"Sector data not available for {sel_co}.")
-
-    st.markdown(sec_html("Model Drivers — What Moves Compensation?",
-        "OLS coefficients: how strongly each factor shifts expected pay · back-test your proposal against these weights"), unsafe_allow_html=True)
-    top_c = coefs[coefs["feature"] != "intercept"].sort_values("exp_effect_pct", ascending=True).copy()
-    lbl_map = {"log_comp_lag1": "Prior-Year Pay (Stickiness)", "year_trend": "Year Trend", "log_board_size": "Board Size (log)"}
-    top_c["label"] = top_c["feature"].apply(lambda x: lbl_map.get(x, x.replace("sector_", "Sector: ").replace("_", " ")))
-    fig3 = go.Figure(go.Bar(
-        x=top_c["exp_effect_pct"], y=top_c["label"], orientation="h",
-        marker_color=[GREEN if v > 0 else RED for v in top_c["exp_effect_pct"]],
-        text=[f"{v:+.0f}%" for v in top_c["exp_effect_pct"]], textposition="outside",
-        hovertemplate="%{y}: %{x:+.0f}%<extra></extra>"))
-    fig3.update_layout(height=340, margin=dict(l=0, r=0, t=10, b=0),
-        plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(title="Effect on Compensation Level (%)", gridcolor=GRAYLT),
-        yaxis=dict(tickfont=dict(size=10)))
-    st.plotly_chart(fig3, use_container_width=True)
-
-    # ── Advanced Consultant metrics ─────────────────────────────────
-    st.markdown(sec_html("Advanced Tools — RMSE · Natural Peer Group · Structure Gap · Pay Forecast · Stickiness",
-        "Quantitative consultant toolkit: back-test accuracy, data-driven comps, scenario analysis, forward projection"), unsafe_allow_html=True)
-
-    # Per-company model RMSE
-    co_mu_known = co_mu_all.dropna(subset=["total_comp_bt", "pred_comp"])
-    rmse_k, mae_k, n_obs = None, None, 0
-    if len(co_mu_known) > 0:
-        resid = co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"]
-        rmse_k = float(np.sqrt((resid ** 2).mean()))
-        mae_k  = float(resid.abs().mean())
-        n_obs  = len(co_mu_known)
-        resid_pct = (resid / co_mu_known["pred_comp"] * 100).dropna()
-
-    # Natural comparator group (5 closest pred_comp in same year)
-    mu_yr_all = mu[mu["year"] == sel_year].dropna(subset=["pred_comp"])
-    comparators = pd.DataFrame()
-    if pred_val and len(mu_yr_all) > 1:
-        mu_yr_all = mu_yr_all.copy()
-        mu_yr_all["dist"] = (mu_yr_all["pred_comp"] - pred_val).abs()
-        comparators = mu_yr_all[mu_yr_all["company_shortname"] != sel_co].nsmallest(5, "dist")[
-            ["company_shortname", "pred_comp", "total_comp_bt", "actual_vs_expected_pct"]]
-
-    # Per-company stickiness (lag1 correlation)
-    co_mu_lag = co_mu_all.dropna(subset=["total_comp_bt"]).copy()
-    co_mu_lag["lag1"] = co_mu_lag["total_comp_bt"].shift(1)
-    co_mu_lag = co_mu_lag.dropna(subset=["lag1"])
-    stick_corr = float(co_mu_lag["total_comp_bt"].corr(co_mu_lag["lag1"])) if len(co_mu_lag) > 3 else None
-    stick_beta = float(np.polyfit(co_mu_lag["lag1"], co_mu_lag["total_comp_bt"], 1)[0]) if len(co_mu_lag) > 3 else None
-
-    # Structure optimization gap (vs sector MEDIAN on lti_pct)
-    lti_gap, sti_gap = None, None
-    if in_model and sector and sector != "—" and "sector" in df.columns:
-        sect_yr_opt = df[(df["sector"] == sector) & (df["year"] == sel_year)].dropna(subset=["lti_pct", "sti_pct"])
-        if len(sect_yr_opt) > 0 and len(co_yr) > 0:
-            sect_lti_med = float(sect_yr_opt["lti_pct"].median())
-            sect_sti_med = float(sect_yr_opt["sti_pct"].median())
-            curr_lti = float(co_yr["lti_pct"].iloc[0]) if co_yr["lti_pct"].notna().any() else None
-            curr_sti = float(co_yr["sti_pct"].iloc[0]) if co_yr["sti_pct"].notna().any() else None
-            if curr_lti is not None: lti_gap = sect_lti_med - curr_lti
-            if curr_sti is not None: sti_gap = sect_sti_med - curr_sti
-
-    # Pay trend forecast using year_trend coefficient
-    forecast_rows = []
-    yr_coef_row = coefs[coefs["feature"] == "year_trend"]
-    last_mu_pred = co_mu_all.dropna(subset=["pred_comp"])
-    if len(last_mu_pred) > 0 and len(yr_coef_row) > 0:
-        last_yr   = int(last_mu_pred.iloc[-1]["year"])
-        last_pred = float(last_mu_pred.iloc[-1]["pred_comp"])
-        yr_eff    = float(yr_coef_row["exp_effect_pct"].iloc[0]) / 100
-        raw_yr_coef = np.log(1 + yr_eff)
-        cur = last_pred
-        for yr_f in range(last_yr + 1, last_yr + 4):
-            cur = cur * np.exp(raw_yr_coef)
-            forecast_rows.append({"year": yr_f, "pred_comp": cur, "type": "Forecast"})
-
-    # KPI row
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: st.markdown(kpi_html(
-        f"€{rmse_k:.0f}K" if rmse_k else "—", f"Model RMSE ({n_obs} obs)",
-        f"MAE €{mae_k:.0f}K" if mae_k else "Prediction accuracy",
-        GREEN if rmse_k and rmse_k < 500 else AMBER if rmse_k and rmse_k < 1500 else RED if rmse_k else GRAY,
-        GREEN if rmse_k and rmse_k < 500 else AMBER if rmse_k and rmse_k < 1500 else RED if rmse_k else GRAY,
-        info="Root Mean Squared Error of the OLS model for this specific company over all available years. Lower RMSE means the global model fits this company's pay history well. High RMSE (>€1.5M) suggests company-specific factors not captured by the model."
-    ), unsafe_allow_html=True)
-    with c2: st.markdown(kpi_html(
-        str(len(comparators)) if len(comparators) > 0 else "—", "Natural Comparators",
-        "Data-driven peer group", NAVY,
-        info="Number of DAX companies identified as natural comparators — those with the closest model-implied fair compensation value in the same year. These are the most defensible peers for benchmarking, as they are identified by the data rather than manual selection."), unsafe_allow_html=True)
-    with c3:
-        lti_gap_col = RED if lti_gap and lti_gap > 10 else AMBER if lti_gap and lti_gap > 5 else GREEN if lti_gap is not None else GRAY
-        st.markdown(kpi_html(
-            f"{lti_gap:+.0f}pp LTI" if lti_gap is not None else "—",
-            "Structure Gap to Sector Med.",
-            f"STI gap: {sti_gap:+.0f}pp" if sti_gap is not None else "vs. sector median",
-            lti_gap_col, lti_gap_col,
-            info="Difference between this company's LTI share and the sector median LTI share for the selected year (in percentage points). A positive gap means the company uses more LTI than peers; negative means it relies more on short-term pay. Useful for structure optimization recommendations."), unsafe_allow_html=True)
-    with c4: st.markdown(kpi_html(
-        f"{stick_corr:.2f}" if stick_corr is not None else "—", "Pay Stickiness (r)",
-        f"β={stick_beta:.2f}" if stick_beta is not None else "lag-1 correlation",
-        GREEN if stick_corr and stick_corr > 0.85 else AMBER if stick_corr and stick_corr > 0.65 else RED if stick_corr else GRAY,
-        GREEN if stick_corr and stick_corr > 0.85 else AMBER if stick_corr and stick_corr > 0.65 else RED if stick_corr else GRAY,
-        info="Correlation between this year's pay and last year's pay (lag-1 autocorrelation). High stickiness (r>0.85) means pay is slow to adjust to performance — once set, it rarely drops. The β coefficient shows by how many euros pay changes for every €1 increase in last year's pay."
-    ), unsafe_allow_html=True)
-
-    col_comp, col_fore = st.columns([2, 3], gap="large")
-    with col_comp:
-        st.markdown(sec_html("Natural Comparator Group",
-            "5 companies with the closest model-implied fair compensation in the same year"), unsafe_allow_html=True)
-        if len(comparators) > 0:
-            comp_colors = ["#94a3b8"] * len(comparators)
-            fig_comp = go.Figure()
-            fig_comp.add_trace(go.Bar(
-                x=comparators["pred_comp"] / 1000, y=comparators["company_shortname"],
-                orientation="h", marker_color="#94a3b8",
-                text=[f"€{v/1000:.1f}M" for v in comparators["pred_comp"]],
-                textposition="outside", textfont=dict(size=8), name="Comparators"))
-            if pred_val:
-                fig_comp.add_vline(x=pred_val / 1000, line_color=ORANGE, line_width=2,
-                    annotation_text=sel_co, annotation_font=dict(color=ORANGE, size=9))
-            fig_comp.update_layout(height=220, margin=dict(l=0, r=0, t=10, b=0),
-                plot_bgcolor="white", paper_bgcolor="white",
-                xaxis=dict(title="Model-Fair Comp. (€M)", gridcolor=GRAYLT),
-                yaxis=dict(tickfont=dict(size=9)), showlegend=False)
-            st.plotly_chart(fig_comp, use_container_width=True)
-            st.dataframe(comparators.rename(columns={
-                "company_shortname": "Comparator", "pred_comp": "Model-Fair (€K)",
-                "total_comp_bt": "Actual (€K)", "actual_vs_expected_pct": "vs. Model %"
-            }).round(0).set_index("Comparator"), use_container_width=True)
-
-    with col_fore:
-        st.markdown(sec_html("Pay Trend Forecast & Model Accuracy",
-            "Dashed = model-based forecast using year trend coefficient · dots = residuals (actual - predicted)"), unsafe_allow_html=True)
-        if len(co_mu_all) > 0:
-            fig_fore = go.Figure()
-            hist_data = co_mu_all.dropna(subset=["pred_comp"])
-            fig_fore.add_trace(go.Scatter(x=hist_data["year"], y=hist_data["pred_comp"],
-                line=dict(color=ORANGE, dash="dash", width=2), name="Model Expectation"))
-            fig_fore.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["total_comp_bt"],
-                line=dict(color=NAVY, width=2.5), mode="lines+markers", marker=dict(size=5),
-                name="Actual"))
-            if forecast_rows:
-                fore_df = pd.DataFrame(forecast_rows)
-                # Connect last actual to first forecast
-                last_pt = last_mu_pred.iloc[-1]
-                fig_fore.add_trace(go.Scatter(
-                    x=[last_pt["year"]] + fore_df["year"].tolist(),
-                    y=[last_pt["pred_comp"]] + fore_df["pred_comp"].tolist(),
-                    line=dict(color=RED, width=2, dash="dot"), mode="lines+markers",
-                    marker=dict(size=7, symbol="diamond"), name="Forecast (yr-trend only)"))
+        elif _sec == "advanced":
+            co_mu_known = co_mu_all.dropna(subset=["total_comp_bt", "pred_comp"])
+            rmse_k, mae_k, n_obs = None, None, 0
             if len(co_mu_known) > 0:
-                fig_fore.add_trace(go.Bar(
-                    x=co_mu_known["year"],
-                    y=(co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"]).clip(-3000, 3000),
-                    marker_color=["rgba(220,38,38,.25)" if v > 0 else "rgba(22,163,74,.25)"
-                                  for v in (co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"])],
-                    name="Residual (actual−model)", yaxis="y2"))
-            fig_fore.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0),
-                plot_bgcolor="white", paper_bgcolor="white",
-                yaxis=dict(title="Total Comp. (€K)", gridcolor=GRAYLT),
-                yaxis2=dict(title="Residual (€K)", overlaying="y", side="right",
-                    showgrid=False, tickfont=dict(size=8)),
-                xaxis=dict(gridcolor=GRAYLT),
-                legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)),
-                hovermode="x unified")
-            st.plotly_chart(fig_fore, use_container_width=True)
+                resid = co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"]
+                rmse_k = float(np.sqrt((resid ** 2).mean()))
+                mae_k  = float(resid.abs().mean())
+                n_obs  = len(co_mu_known)
+            mu_yr_all = mu[mu["year"] == sel_year].dropna(subset=["pred_comp"])
+            comparators = pd.DataFrame()
+            if pred_val and len(mu_yr_all) > 1:
+                mu_yr_all = mu_yr_all.copy()
+                mu_yr_all["dist"] = (mu_yr_all["pred_comp"] - pred_val).abs()
+                comparators = mu_yr_all[mu_yr_all["company_shortname"] != sel_co].nsmallest(5, "dist")[
+                    ["company_shortname", "pred_comp", "total_comp_bt", "actual_vs_expected_pct"]]
+            co_mu_lag = co_mu_all.dropna(subset=["total_comp_bt"]).copy()
+            co_mu_lag["lag1"] = co_mu_lag["total_comp_bt"].shift(1)
+            co_mu_lag = co_mu_lag.dropna(subset=["lag1"])
+            stick_corr = float(co_mu_lag["total_comp_bt"].corr(co_mu_lag["lag1"])) if len(co_mu_lag) > 3 else None
+            stick_beta = float(np.polyfit(co_mu_lag["lag1"], co_mu_lag["total_comp_bt"], 1)[0]) if len(co_mu_lag) > 3 else None
+            lti_gap, sti_gap = None, None
+            if in_model and sector and sector != "—" and "sector" in df.columns:
+                sect_yr_opt = df[(df["sector"] == sector) & (df["year"] == sel_year)].dropna(subset=["lti_pct", "sti_pct"])
+                if len(sect_yr_opt) > 0 and len(co_yr) > 0:
+                    sect_lti_med = float(sect_yr_opt["lti_pct"].median())
+                    sect_sti_med = float(sect_yr_opt["sti_pct"].median())
+                    curr_lti = float(co_yr["lti_pct"].iloc[0]) if co_yr["lti_pct"].notna().any() else None
+                    curr_sti = float(co_yr["sti_pct"].iloc[0]) if co_yr["sti_pct"].notna().any() else None
+                    if curr_lti is not None: lti_gap = sect_lti_med - curr_lti
+                    if curr_sti is not None: sti_gap = sect_sti_med - curr_sti
+            forecast_rows = []
+            yr_coef_row = coefs[coefs["feature"] == "year_trend"]
+            last_mu_pred = co_mu_all.dropna(subset=["pred_comp"])
+            if len(last_mu_pred) > 0 and len(yr_coef_row) > 0:
+                last_yr   = int(last_mu_pred.iloc[-1]["year"])
+                last_pred = float(last_mu_pred.iloc[-1]["pred_comp"])
+                yr_eff    = float(yr_coef_row["exp_effect_pct"].iloc[0]) / 100
+                raw_yr_coef = np.log(1 + yr_eff)
+                cur = last_pred
+                for yr_f in range(last_yr + 1, last_yr + 4):
+                    cur = cur * np.exp(raw_yr_coef)
+                    forecast_rows.append({"year": yr_f, "pred_comp": cur, "type": "Forecast"})
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.markdown(kpi_html(
+                f"€{rmse_k:.0f}K" if rmse_k else "—", f"Model RMSE ({n_obs} obs)",
+                f"MAE €{mae_k:.0f}K" if mae_k else "Prediction accuracy",
+                GREEN if rmse_k and rmse_k < 500 else AMBER if rmse_k and rmse_k < 1500 else RED if rmse_k else GRAY,
+                GREEN if rmse_k and rmse_k < 500 else AMBER if rmse_k and rmse_k < 1500 else RED if rmse_k else GRAY,
+                info="Root Mean Squared Error of the OLS model for this specific company over all available years. Lower RMSE means the global model fits this company's pay history well. High RMSE (>€1.5M) suggests company-specific factors not captured by the model."
+            ), unsafe_allow_html=True)
+            with c2: st.markdown(kpi_html(
+                str(len(comparators)) if len(comparators) > 0 else "—", "Natural Comparators",
+                "Data-driven peer group", NAVY,
+                info="Number of DAX companies identified as natural comparators — those with the closest model-implied fair compensation value in the same year. These are the most defensible peers for benchmarking, as they are identified by the data rather than manual selection."), unsafe_allow_html=True)
+            with c3:
+                lti_gap_col = RED if lti_gap and lti_gap > 10 else AMBER if lti_gap and lti_gap > 5 else GREEN if lti_gap is not None else GRAY
+                st.markdown(kpi_html(
+                    f"{lti_gap:+.0f}pp LTI" if lti_gap is not None else "—",
+                    "Structure Gap to Sector Med.",
+                    f"STI gap: {sti_gap:+.0f}pp" if sti_gap is not None else "vs. sector median",
+                    lti_gap_col, lti_gap_col,
+                    info="Difference between this company's LTI share and the sector median LTI share for the selected year (in percentage points). A positive gap means the company uses more LTI than peers; negative means it relies more on short-term pay. Useful for structure optimization recommendations."), unsafe_allow_html=True)
+            with c4: st.markdown(kpi_html(
+                f"{stick_corr:.2f}" if stick_corr is not None else "—", "Pay Stickiness (r)",
+                f"β={stick_beta:.2f}" if stick_beta is not None else "lag-1 correlation",
+                GREEN if stick_corr and stick_corr > 0.85 else AMBER if stick_corr and stick_corr > 0.65 else RED if stick_corr else GRAY,
+                GREEN if stick_corr and stick_corr > 0.85 else AMBER if stick_corr and stick_corr > 0.65 else RED if stick_corr else GRAY,
+                info="Correlation between this year's pay and last year's pay (lag-1 autocorrelation). High stickiness (r>0.85) means pay is slow to adjust to performance — once set, it rarely drops. The β coefficient shows by how many euros pay changes for every €1 increase in last year's pay."
+            ), unsafe_allow_html=True)
+            col_comp, col_fore = st.columns([2, 3], gap="large")
+            with col_comp:
+                st.markdown(sec_html("Natural Comparator Group",
+                    "5 companies with the closest model-implied fair compensation in the same year"), unsafe_allow_html=True)
+                if len(comparators) > 0:
+                    fig_comp = go.Figure()
+                    fig_comp.add_trace(go.Bar(
+                        x=comparators["pred_comp"] / 1000, y=comparators["company_shortname"],
+                        orientation="h", marker_color="#94a3b8",
+                        text=[f"€{v/1000:.1f}M" for v in comparators["pred_comp"]],
+                        textposition="outside", textfont=dict(size=8), name="Comparators"))
+                    if pred_val:
+                        fig_comp.add_vline(x=pred_val / 1000, line_color=ORANGE, line_width=2,
+                            annotation_text=sel_co, annotation_font=dict(color=ORANGE, size=9))
+                    fig_comp.update_layout(height=220, margin=dict(l=0, r=0, t=10, b=0),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        xaxis=dict(title="Model-Fair Comp. (€M)", gridcolor=GRAYLT),
+                        yaxis=dict(tickfont=dict(size=9)), showlegend=False)
+                    st.plotly_chart(fig_comp, use_container_width=True)
+                    st.dataframe(comparators.rename(columns={
+                        "company_shortname": "Comparator", "pred_comp": "Model-Fair (€K)",
+                        "total_comp_bt": "Actual (€K)", "actual_vs_expected_pct": "vs. Model %"
+                    }).round(0).set_index("Comparator"), use_container_width=True)
+            with col_fore:
+                st.markdown(sec_html("Pay Trend Forecast & Model Accuracy",
+                    "Dashed = model-based forecast using year trend coefficient · dots = residuals (actual - predicted)"), unsafe_allow_html=True)
+                if len(co_mu_all) > 0:
+                    fig_fore = go.Figure()
+                    hist_data = co_mu_all.dropna(subset=["pred_comp"])
+                    fig_fore.add_trace(go.Scatter(x=hist_data["year"], y=hist_data["pred_comp"],
+                        line=dict(color=ORANGE, dash="dash", width=2), name="Model Expectation"))
+                    fig_fore.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["total_comp_bt"],
+                        line=dict(color=NAVY, width=2.5), mode="lines+markers", marker=dict(size=5),
+                        name="Actual"))
+                    if forecast_rows:
+                        fore_df = pd.DataFrame(forecast_rows)
+                        last_pt = last_mu_pred.iloc[-1]
+                        fig_fore.add_trace(go.Scatter(
+                            x=[last_pt["year"]] + fore_df["year"].tolist(),
+                            y=[last_pt["pred_comp"]] + fore_df["pred_comp"].tolist(),
+                            line=dict(color=RED, width=2, dash="dot"), mode="lines+markers",
+                            marker=dict(size=7, symbol="diamond"), name="Forecast (yr-trend only)"))
+                    if len(co_mu_known) > 0:
+                        fig_fore.add_trace(go.Bar(
+                            x=co_mu_known["year"],
+                            y=(co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"]).clip(-3000, 3000),
+                            marker_color=["rgba(220,38,38,.25)" if v > 0 else "rgba(22,163,74,.25)"
+                                          for v in (co_mu_known["total_comp_bt"] - co_mu_known["pred_comp"])],
+                            name="Residual (actual−model)", yaxis="y2"))
+                    fig_fore.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        yaxis=dict(title="Total Comp. (€K)", gridcolor=GRAYLT),
+                        yaxis2=dict(title="Residual (€K)", overlaying="y", side="right",
+                            showgrid=False, tickfont=dict(size=8)),
+                        xaxis=dict(gridcolor=GRAYLT),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)),
+                        hovermode="x unified")
+                    st.plotly_chart(fig_fore, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════
