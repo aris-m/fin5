@@ -561,6 +561,15 @@ def show_landing():
 
     st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;margin-top:8px;">ORBIS/Bureau van Dijk · DGAP Compensation Reports · 43 DAX Companies · 2006–2024</div>', unsafe_allow_html=True)
 
+    st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
+    bm1, bm2, _ = st.columns([2, 2, 2])
+    with bm1:
+        if st.button("🧮 Compensation Predictor", key="nav_predictor", use_container_width=True, type="primary"):
+            nav("predictor")
+    with bm2:
+        if st.button("📖 Methodology & KPI Overview", key="nav_methodology", use_container_width=True):
+            nav("methodology")
+
 
 # ══════════════════════════════════════════════════════════════
 # LAYER 2 — OVERVIEW (Company Snapshot + 6 Module Cards)
@@ -2843,6 +2852,556 @@ def show_consultants():
 
 
 # ══════════════════════════════════════════════════════════════
+# COMPENSATION PREDICTOR
+# ══════════════════════════════════════════════════════════════
+_COEF = dict(zip(coefs["feature"], coefs["coefficient"]))
+_SECTORS_MU = sorted(mu["sector"].dropna().unique().tolist())  # reference = "Other"
+_RESID_STD  = 0.268  # median resid_std from model universe (80% PI: ±1.28σ in log space)
+
+def _predict(sector: str, n_exec: int, year: int, lag1_comp_k: float) -> tuple:
+    """Return (point, low, high) in €K using the OLS model."""
+    year_centered  = year - 2012
+    sector_dummy   = f"sector_{sector}"
+    sector_coef    = _COEF.get(sector_dummy, 0.0)   # 0 for reference sector "Other"
+    log_pred = (_COEF["intercept"]
+                + _COEF["log_comp_lag1"]  * np.log(lag1_comp_k)
+                + _COEF["year_trend"]     * year_centered
+                + _COEF["log_board_size"] * np.log(n_exec)
+                + sector_coef)
+    point = np.exp(log_pred)
+    low   = point * np.exp(-1.28 * _RESID_STD)
+    high  = point * np.exp( 1.28 * _RESID_STD)
+    return point, low, high
+
+
+def show_predictor():
+    with st.sidebar:
+        st.markdown(f'<div style="padding:20px 0 12px 0;font-size:1.4rem;font-weight:800;color:white;">ExComp</div>', unsafe_allow_html=True)
+        st.divider()
+        if st.button("← Back to Home", key="pred_home", use_container_width=True): nav("landing")
+
+    # ── Hero ──────────────────────────────────────────────────
+    st.markdown(f"""<div class="hero" style="padding:26px 32px 22px;">
+        <div style="font-size:1.9rem;font-weight:900;color:white;letter-spacing:-1px;">Compensation Predictor</div>
+        <div style="font-size:.88rem;color:#94a3b8;margin-top:6px;">
+            Enter company characteristics → receive a model-based fair-compensation estimate with an 80% prediction interval, structure recommendation, and peer context
+        </div>
+        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;">
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.71rem;color:#cbd5e1;">OLS R²=0.71</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.71rem;color:#cbd5e1;">80% Prediction Interval</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.71rem;color:#cbd5e1;">Sector Structure Benchmark</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.71rem;color:#cbd5e1;">Peer Overlay</span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Layout: inputs left, results right ────────────────────
+    col_in, col_out = st.columns([2, 3], gap="large")
+
+    with col_in:
+        st.markdown(sec_html("Company Characteristics", "Fill in the fields below — all inputs feed directly into the OLS model"), unsafe_allow_html=True)
+
+        with st.form("predictor_form"):
+            p_sector = st.selectbox("Sector", _SECTORS_MU,
+                index=_SECTORS_MU.index("Auto") if "Auto" in _SECTORS_MU else 0,
+                help="Sector classification matching the OLS model's sector dummies. 'Other' is the model's reference sector (no dummy).")
+            p_year = st.selectbox("Prediction Year", [2027, 2026, 2025, 2024, 2023, 2022, 2021, 2020],
+                index=3, help="For 2025–2027, prior-year compensation is the required input (no historical data available).")
+            p_board = st.slider("Executive Board Size (# members)", min_value=2, max_value=20, value=7,
+                help="Number of executive board members. The model uses log(board_size) — larger boards cost more in total but less per head.")
+
+            st.markdown("---")
+            st.markdown("**Prior-Year Total Compensation**")
+            use_avg = st.checkbox("Use DAX sector average as prior-year anchor", value=True,
+                help="If checked, the sector median from the prior year is used for the stickiness (lag-1) term. Uncheck to enter a specific value.")
+            p_lag1 = None
+            if not use_avg:
+                p_lag1 = st.number_input("Prior-year total board compensation (€K)", min_value=500, max_value=100_000,
+                    value=10_000, step=500,
+                    help="Total executive board compensation in the year before the prediction year (€ thousands). The single strongest predictor in the model.")
+
+            st.markdown("---")
+            st.markdown("**Optional: Manual Peer Benchmarks**")
+            st.caption("Enter up to 3 comparable companies for the comparison chart.")
+            peers = []
+            for i in range(3):
+                pc, pv = st.columns([3, 2])
+                with pc: pname = st.text_input(f"Peer {i+1} name", key=f"pname{i}", placeholder=f"Company {i+1}", label_visibility="collapsed")
+                with pv: pcomp = st.number_input(f"Comp (€K)", min_value=0, max_value=200_000, value=0, step=500, key=f"pcomp{i}", label_visibility="collapsed")
+                if pname and pcomp > 0:
+                    peers.append((pname, float(pcomp)))
+
+            submitted = st.form_submit_button("▶ Run Prediction", type="primary", use_container_width=True)
+
+    # ── Compute ───────────────────────────────────────────────
+    with col_out:
+        if not submitted and "pred_result" not in st.session_state:
+            st.markdown(f"""<div style="background:#f8fafc;border:2px dashed #e2e8f0;border-radius:16px;
+                padding:48px 32px;text-align:center;margin-top:48px;">
+                <div style="font-size:2.5rem;margin-bottom:12px;">🧮</div>
+                <div style="font-size:1rem;font-weight:700;color:{NAVY};margin-bottom:6px;">Ready to Predict</div>
+                <div style="font-size:.83rem;color:{GRAY};">Fill in the company characteristics on the left and click <strong>Run Prediction</strong>.</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            # Cache result in session state so it persists across re-runs without re-submit
+            if submitted:
+                # Resolve lag1
+                if use_avg or p_lag1 is None:
+                    prior_year = p_year - 1
+                    mu_prior = mu[(mu["year"] == prior_year) & (mu["sector"] == p_sector)]
+                    if len(mu_prior) > 0:
+                        lag1_val = float(mu_prior["total_comp_bt"].dropna().median())
+                    else:
+                        mu_prior_all = mu[mu["year"] == prior_year]
+                        lag1_val = float(mu_prior_all["total_comp_bt"].dropna().median()) if len(mu_prior_all) > 0 else 10_000.0
+                else:
+                    lag1_val = float(p_lag1)
+
+                point, low, high = _predict(p_sector, p_board, p_year, lag1_val)
+
+                # Sector context from mu
+                mu_sector_yr = mu[(mu["year"] == p_year) & (mu["sector"] == p_sector)].dropna(subset=["pred_comp"])
+                mu_all_yr    = mu[mu["year"] == p_year].dropna(subset=["pred_comp"])
+                sector_med   = float(mu_sector_yr["pred_comp"].median()) if len(mu_sector_yr) > 0 else None
+                dax_med      = float(mu_all_yr["pred_comp"].median())    if len(mu_all_yr) > 0 else None
+                sector_p25   = float(mu_sector_yr["pred_comp"].quantile(.25)) if len(mu_sector_yr) > 1 else None
+                sector_p75   = float(mu_sector_yr["pred_comp"].quantile(.75)) if len(mu_sector_yr) > 1 else None
+
+                # Comp structure from sector peers
+                sector_cos  = mu[mu["sector"] == p_sector]["company_shortname"].unique()
+                struct_df   = df[df["company_shortname"].isin(sector_cos) & (df["year"] == min(p_year, FEATURES_YEAR_MAX))].dropna(subset=["fixed_pct","sti_pct","lti_pct"])
+                if len(struct_df) == 0:
+                    struct_df = df[df["company_shortname"].isin(sector_cos)].dropna(subset=["fixed_pct","sti_pct","lti_pct"])
+                fix_med = float(struct_df["fixed_pct"].median()) if len(struct_df) > 0 else 33.0
+                sti_med = float(struct_df["sti_pct"].median())   if len(struct_df) > 0 else 33.0
+                lti_med = float(struct_df["lti_pct"].median())   if len(struct_df) > 0 else 34.0
+
+                st.session_state["pred_result"] = dict(
+                    sector=p_sector, year=p_year, board=p_board, lag1=lag1_val,
+                    point=point, low=low, high=high,
+                    sector_med=sector_med, dax_med=dax_med,
+                    sector_p25=sector_p25, sector_p75=sector_p75,
+                    fix_med=fix_med, sti_med=sti_med, lti_med=lti_med,
+                    mu_sector_yr=mu_sector_yr, mu_all_yr=mu_all_yr,
+                    peers=peers,
+                    use_avg=use_avg,
+                )
+
+            r = st.session_state.get("pred_result", {})
+            if not r:
+                st.info("Submit the form to see results.")
+                st.stop()
+
+            point      = r["point"]
+            low        = r["low"]
+            high       = r["high"]
+            sector_med = r["sector_med"]
+            dax_med    = r["dax_med"]
+            fix_med, sti_med, lti_med = r["fix_med"], r["sti_med"], r["lti_med"]
+            mu_sector_yr = r["mu_sector_yr"]
+            mu_all_yr    = r["mu_all_yr"]
+            peers_res    = r["peers"]
+            res_sector   = r["sector"]
+            res_year     = r["year"]
+            res_board    = r["board"]
+
+            vs_sector = (point - sector_med) / sector_med * 100 if sector_med else None
+            vs_dax    = (point - dax_med)    / dax_med    * 100 if dax_med    else None
+            _, t_col_s, t_lbl_s = traffic(vs_sector)
+            per_exec = point / res_board
+
+            st.markdown(sec_html(f"Prediction Result — {res_sector} · {res_board} board members · {res_year}",
+                "Point estimate with 80% prediction interval based on the OLS model"), unsafe_allow_html=True)
+
+            # Main result hero
+            st.markdown(f"""<div style="background:linear-gradient(135deg,{NAVY} 0%,#1e3a5f 100%);border-radius:20px;padding:28px 30px;margin-bottom:16px;">
+                <div style="display:flex;align-items:flex-end;gap:12px;margin-bottom:4px;">
+                    <div style="font-size:3.2rem;font-weight:900;color:white;letter-spacing:-2px;line-height:1;">€{point/1000:.2f}M</div>
+                    <div style="font-size:.85rem;color:#94a3b8;margin-bottom:8px;">total board comp</div>
+                </div>
+                <div style="font-size:.82rem;color:#64748b;margin-bottom:16px;">
+                    80% Prediction Interval: <span style="color:#94a3b8;font-weight:600;">€{low/1000:.2f}M – €{high/1000:.2f}M</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+                    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.25rem;font-weight:800;color:white;">€{per_exec:.0f}K</div>
+                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;">per exec</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.25rem;font-weight:800;color:{t_col_s};">{vs_sector:+.0f}%</div>
+                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;">vs. sector median</div>
+                    </div>
+                    <div style="background:rgba(255,255,255,.07);border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:1.25rem;font-weight:800;color:white;">{vs_dax:+.0f}%</div>
+                        <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;margin-top:3px;">vs. DAX median</div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+            # KPI row: range width, structure rec, sector rank
+            r1, r2, r3 = st.columns(3)
+            range_width = (high - low) / point * 100
+            with r1: st.markdown(kpi_html(f"€{low/1000:.1f}M – €{high/1000:.1f}M", "80% Prediction Range",
+                f"±{range_width/2:.0f}% around point estimate", NAVY,
+                info="The 80% prediction interval derived from the model's empirical residual standard deviation (σ=0.27 in log space). There is an 80% probability that the 'true' fair compensation for a company with these characteristics falls within this range."),
+                unsafe_allow_html=True)
+            with r2: st.markdown(kpi_html(f"{fix_med:.0f}% / {sti_med:.0f}% / {lti_med:.0f}%",
+                "Recommended Structure", f"Fix / STI / LTI — {res_sector} median",
+                ORANGE, info="Sector-median compensation structure (Fixed / Short-Term Incentive / Long-Term Incentive) based on DAX companies in this sector. Use as a starting point for the pay mix recommendation."),
+                unsafe_allow_html=True)
+            rank_in_sector = int((mu_sector_yr["pred_comp"] < point).sum()) + 1 if len(mu_sector_yr) > 0 else None
+            with r3: st.markdown(kpi_html(
+                f"#{rank_in_sector} of {len(mu_sector_yr)}" if rank_in_sector else "—",
+                "Sector Peer Rank", f"By model-fair comp — {res_year}", NAVY,
+                info="Where this company's predicted fair compensation ranks among DAX peers in the same sector for the selected year. Based on model-expected values, not actual reported pay."),
+                unsafe_allow_html=True)
+
+            # ── Structure chart ───────────────────────────────
+            st.markdown(sec_html("Recommended Compensation Structure",
+                f"Sector median split ({res_sector}) — adjust based on company-specific governance objectives"), unsafe_allow_html=True)
+
+            struct_fig = go.Figure()
+            # Suggested amounts
+            fix_amt = point * fix_med / 100
+            sti_amt = point * sti_med / 100
+            lti_amt = point * lti_med / 100
+            struct_fig.add_trace(go.Bar(name="Fixed Salary", x=["Fixed", "STI", "LTI"],
+                y=[fix_amt/1000, sti_amt/1000, lti_amt/1000],
+                marker_color=[NAVY, ORANGE, GREEN],
+                text=[f"€{v/1000:.1f}M<br>({p:.0f}%)" for v, p in
+                      [(fix_amt, fix_med), (sti_amt, sti_med), (lti_amt, lti_med)]],
+                textposition="outside", textfont=dict(size=10), showlegend=False))
+            struct_fig.update_layout(height=230, margin=dict(l=0, r=0, t=10, b=0),
+                plot_bgcolor="white", paper_bgcolor="white",
+                yaxis=dict(title="Amount (€M)", gridcolor=GRAYLT),
+                xaxis=dict(title="Compensation Component"))
+            st.plotly_chart(struct_fig, use_container_width=True)
+
+            # Structure donut
+            donut_fig = go.Figure(go.Pie(
+                labels=["Fixed", "STI", "LTI"],
+                values=[fix_med, sti_med, lti_med],
+                hole=0.55,
+                marker_colors=[NAVY, ORANGE, GREEN],
+                textinfo="label+percent", textfont=dict(size=11)))
+            donut_fig.update_layout(height=200, margin=dict(l=0, r=0, t=0, b=0),
+                showlegend=False, paper_bgcolor="white")
+
+            # ── Peer comparison chart ─────────────────────────
+            st.markdown(sec_html(f"Peer Context — {res_sector} Sector ({res_year})",
+                "Distribution of model-fair compensation among DAX peers in the same sector · orange = your prediction"), unsafe_allow_html=True)
+
+            if len(mu_sector_yr) > 0:
+                peer_sorted = mu_sector_yr.sort_values("pred_comp", ascending=True).copy()
+                bar_cols = [ORANGE if abs(v - point) < 1 else "#94a3b8" for v in peer_sorted["pred_comp"]]
+                # Insert predicted point as separate trace
+                fig_peer = go.Figure()
+                fig_peer.add_trace(go.Bar(
+                    x=peer_sorted["pred_comp"] / 1000, y=peer_sorted["company_shortname"],
+                    orientation="h", marker_color="#cbd5e1",
+                    text=[f"€{v/1000:.1f}M" for v in peer_sorted["pred_comp"]],
+                    textposition="outside", textfont=dict(size=8),
+                    name=f"DAX {res_sector} peers",
+                    hovertemplate="%{y}: €%{x:.1f}M<extra></extra>"))
+                # Prediction vlines
+                fig_peer.add_vline(x=point/1000, line_color=ORANGE, line_width=3,
+                    annotation_text=f"Prediction €{point/1000:.1f}M",
+                    annotation_font=dict(color=ORANGE, size=9))
+                fig_peer.add_vline(x=low/1000, line_color=ORANGE, line_width=1, line_dash="dot")
+                fig_peer.add_vline(x=high/1000, line_color=ORANGE, line_width=1, line_dash="dot",
+                    annotation_text="80% PI", annotation_font=dict(color=ORANGE, size=8))
+                # Manual peers
+                for pname, pcomp in peers_res:
+                    fig_peer.add_vline(x=pcomp/1000, line_color=NAVY, line_width=2, line_dash="dash",
+                        annotation_text=pname, annotation_font=dict(color=NAVY, size=8))
+                fig_peer.update_layout(
+                    height=max(220, len(peer_sorted) * 28 + 40),
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(title="Model-Fair Comp. (€M)", gridcolor=GRAYLT),
+                    yaxis=dict(tickfont=dict(size=9)), showlegend=False)
+                st.plotly_chart(fig_peer, use_container_width=True)
+
+            # ── Full DAX scatter if ≥2 sectors ────────────────
+            if len(mu_all_yr) > 5:
+                st.markdown(sec_html("Full DAX Context", "All sectors · orange = prediction · shade = 80% interval"), unsafe_allow_html=True)
+                dax_sorted = mu_all_yr.sort_values("pred_comp", ascending=False).head(40)
+                dax_cols = [ORANGE if r == res_sector else "#e2e8f0" for r in dax_sorted["sector"]]
+                fig_dax = go.Figure()
+                fig_dax.add_trace(go.Bar(
+                    x=dax_sorted["company_shortname"], y=dax_sorted["pred_comp"]/1000,
+                    marker_color=dax_cols, name="DAX peers",
+                    hovertemplate="%{x}: €%{y:.1f}M<extra></extra>"))
+                fig_dax.add_hline(y=point/1000, line_color=ORANGE, line_width=2,
+                    annotation_text=f"Prediction €{point/1000:.1f}M",
+                    annotation_font=dict(color=ORANGE, size=9))
+                fig_dax.add_hrect(y0=low/1000, y1=high/1000, fillcolor="rgba(249,115,22,.08)",
+                    line_width=0, annotation_text="80% PI", annotation_font=dict(color=ORANGE, size=8))
+                for pname, pcomp in peers_res:
+                    fig_dax.add_hline(y=pcomp/1000, line_color=NAVY, line_dash="dash", line_width=1.5,
+                        annotation_text=pname, annotation_font=dict(color=NAVY, size=8))
+                fig_dax.update_layout(height=280, margin=dict(l=0, r=0, t=10, b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    yaxis=dict(title="Model-Fair Comp. (€M)", gridcolor=GRAYLT),
+                    xaxis=dict(tickangle=-40, tickfont=dict(size=8)))
+                st.plotly_chart(fig_dax, use_container_width=True)
+
+            # ── Input sensitivity ─────────────────────────────
+            st.markdown(sec_html("Board Size Sensitivity",
+                "How does the prediction change as board size varies? Everything else held constant."), unsafe_allow_html=True)
+            board_range = list(range(2, 21))
+            sens_pts = [_predict(res_sector, b, res_year, r["lag1"])[0] for b in board_range]
+            sens_lo  = [_predict(res_sector, b, res_year, r["lag1"])[1] for b in board_range]
+            sens_hi  = [_predict(res_sector, b, res_year, r["lag1"])[2] for b in board_range]
+            fig_sens = go.Figure()
+            fig_sens.add_trace(go.Scatter(x=board_range, y=[v/1000 for v in sens_hi],
+                mode="lines", line=dict(width=0), showlegend=False,
+                hovertemplate=""))
+            fig_sens.add_trace(go.Scatter(x=board_range, y=[v/1000 for v in sens_lo],
+                mode="lines", fill="tonexty", fillcolor="rgba(249,115,22,.12)",
+                line=dict(width=0), name="80% PI", showlegend=False))
+            fig_sens.add_trace(go.Scatter(x=board_range, y=[v/1000 for v in sens_pts],
+                mode="lines+markers", line=dict(color=ORANGE, width=2.5),
+                marker=dict(size=5), name="Point estimate"))
+            fig_sens.add_vline(x=res_board, line_color=NAVY, line_dash="dash", line_width=2,
+                annotation_text=f"Your input: {res_board}",
+                annotation_font=dict(color=NAVY, size=9))
+            fig_sens.update_layout(height=220, margin=dict(l=0, r=0, t=10, b=0),
+                plot_bgcolor="white", paper_bgcolor="white",
+                xaxis=dict(title="Board Size (# members)", gridcolor=GRAYLT, dtick=2),
+                yaxis=dict(title="Total Comp. (€M)", gridcolor=GRAYLT),
+                legend=dict(orientation="h"))
+            st.plotly_chart(fig_sens, use_container_width=True)
+
+            # ── Model inputs table ────────────────────────────
+            st.markdown(sec_html("Model Inputs Summary", "What was fed into the OLS model to produce this prediction"), unsafe_allow_html=True)
+            inp_rows = [
+                ("Sector", res_sector, f"Dummy coef: {_COEF.get(f'sector_{res_sector}', 0):.4f}"),
+                ("Board Size", str(res_board), f"log({res_board}) = {np.log(res_board):.3f}"),
+                ("Year", str(res_year), f"Year-centered = {res_year - 2012}"),
+                ("Prior-Year Comp (lag-1)", f"€{r['lag1']:.0f}K", f"{'Sector avg' if r['use_avg'] else 'User input'} · log = {np.log(r['lag1']):.3f}"),
+            ]
+            rows_h = "".join([f"""<tr>
+                <td style="padding:8px 12px;font-weight:600;color:{NAVY};font-size:.82rem;border-bottom:1px solid #f1f5f9;">{a}</td>
+                <td style="padding:8px 12px;color:#374151;font-size:.82rem;border-bottom:1px solid #f1f5f9;">{b}</td>
+                <td style="padding:8px 12px;color:{GRAY};font-size:.78rem;border-bottom:1px solid #f1f5f9;font-family:monospace;">{c}</td>
+            </tr>""" for a, b, c in inp_rows])
+            st.markdown(f"""<div style="background:white;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead><tr style="background:{NAVY};">
+                        <th style="color:white;font-size:.7rem;padding:9px 12px;text-align:left;">Input</th>
+                        <th style="color:white;font-size:.7rem;padding:9px 12px;text-align:left;">Value</th>
+                        <th style="color:white;font-size:.7rem;padding:9px 12px;text-align:left;">Model term</th>
+                    </tr></thead>
+                    <tbody>{rows_h}</tbody>
+                </table>
+            </div>""", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
+# METHODOLOGY PAGE
+# ══════════════════════════════════════════════════════════════
+def show_methodology():
+    with st.sidebar:
+        st.markdown(f'<div style="padding:20px 0 12px 0;font-size:1.4rem;font-weight:800;color:white;">ExComp</div>', unsafe_allow_html=True)
+        st.divider()
+        if st.button("← Back to Home", use_container_width=True): nav("landing")
+
+    # ── Hero ──────────────────────────────────────────────────
+    st.markdown(f"""<div class="hero" style="padding:28px 32px 24px;">
+        <div style="font-size:2rem;font-weight:900;color:white;letter-spacing:-1px;">Methodology &amp; KPI Reference</div>
+        <div style="font-size:.9rem;color:#94a3b8;margin-top:8px;">Every metric, how it is computed, and why it matters — all in one place</div>
+        <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:6px;">
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.72rem;color:#cbd5e1;">📐 OLS Regression (R²=0.71)</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.72rem;color:#cbd5e1;">📈 Trend Regression (polyfit)</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.72rem;color:#cbd5e1;">🔴 Anomaly Detection</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.72rem;color:#cbd5e1;">📦 Rule-Based Flags</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.72rem;color:#cbd5e1;">📊 Percentile / Distribution</span>
+            <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.72rem;color:#cbd5e1;">🔗 Correlation Analysis</span>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # ── Section 1: Core OLS Model ─────────────────────────────
+    st.markdown(sec_html("The Core Prediction Model",
+        "All 'vs. model' and 'fair-value' metrics derive from this single OLS regression estimated on the full DAX panel"), unsafe_allow_html=True)
+
+    st.markdown(f"""<div style="background:white;border-radius:16px;padding:22px 26px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,.05);">
+        <div style="font-size:1rem;font-weight:700;color:{NAVY};margin-bottom:8px;">Model Formula</div>
+        <div style="background:#f8fafc;border-radius:8px;padding:14px 18px;font-family:monospace;font-size:.88rem;color:{NAVY};border:1px solid #e2e8f0;line-height:1.9;">
+            log(total_comp) = β₀ + β₁·log(total_comp<sub>t-1</sub>) + β₂·log(board_size) + β₃·year_trend + Σ βₛ·sector_dummy<sub>s</sub> + ε
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px;">
+            <div style="background:#f1f5f9;border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:800;color:{NAVY};">0.71</div>
+                <div style="font-size:.68rem;color:{GRAY};text-transform:uppercase;margin-top:3px;">R² (in-sample)</div>
+            </div>
+            <div style="background:#f1f5f9;border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:800;color:{NAVY};">7,500+</div>
+                <div style="font-size:.68rem;color:{GRAY};text-transform:uppercase;margin-top:3px;">Exec Observations</div>
+            </div>
+            <div style="background:#f1f5f9;border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:800;color:{NAVY};">43</div>
+                <div style="font-size:.68rem;color:{GRAY};text-transform:uppercase;margin-top:3px;">DAX Companies</div>
+            </div>
+            <div style="background:#f1f5f9;border-radius:10px;padding:12px;text-align:center;">
+                <div style="font-size:1.6rem;font-weight:800;color:{NAVY};">2006–2024</div>
+                <div style="font-size:.68rem;color:{GRAY};text-transform:uppercase;margin-top:3px;">Data Period</div>
+            </div>
+        </div>
+        <div style="margin-top:14px;font-size:.82rem;color:{GRAY};line-height:1.65;">
+            <strong>Why log-linear?</strong> Compensation data is right-skewed. Taking logs symmetrizes residuals and means coefficients are interpretable as percentage effects.
+            The <em>exp_effect_pct</em> column in the coefficient table = (exp(β)−1)×100, i.e. the % change in comp for a 1-unit increase in the log predictor.
+            Sector dummies capture structural pay norms (e.g., Financials and Technology tend to pay more). Prior-year pay (β₁) captures <em>stickiness</em> — the single strongest predictor.
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # OLS coefficients table from real data
+    st.markdown(sec_html("Live OLS Coefficients", "Estimated from the full DAX panel — updated each time the data is refreshed"), unsafe_allow_html=True)
+    if len(coefs) > 0:
+        lbl_map = {
+            "log_comp_lag1": "Prior-Year Pay (log)", "year_trend": "Year Trend",
+            "log_board_size": "Board Size (log)", "intercept": "Intercept"
+        }
+        coefs_disp = coefs.copy()
+        coefs_disp["Feature"] = coefs_disp["feature"].apply(
+            lambda x: lbl_map.get(x, x.replace("sector_", "Sector: ").replace("_", " ").title()))
+        coefs_disp["Effect on Pay"] = coefs_disp["exp_effect_pct"].apply(
+            lambda v: f"{v:+.1f}%" if pd.notna(v) else "—")
+        coefs_disp["Direction"] = coefs_disp["exp_effect_pct"].apply(
+            lambda v: "↑ Increases pay" if v > 0 else ("↓ Decreases pay" if v < 0 else "—") if pd.notna(v) else "—")
+        coefs_disp["Interpretation"] = coefs_disp["feature"].apply(lambda x: {
+            "log_comp_lag1": "1% higher prior-year pay → this much % higher current pay (stickiness)",
+            "year_trend":    "Each additional calendar year → structural pay growth trend",
+            "log_board_size":"1% larger board → this much % change in total board pay",
+            "intercept":     "Baseline level when all other predictors are zero (log scale)",
+        }.get(x, "Sector-level pay premium/discount vs. reference sector"))
+        st.dataframe(
+            coefs_disp[["Feature", "Effect on Pay", "Direction", "Interpretation"]].set_index("Feature"),
+            use_container_width=True, height=320)
+
+    # ── Section 2: Methods reference ─────────────────────────
+    st.markdown(sec_html("Statistical Methods Used Across the App",
+        "All methods and what they contribute to the analysis"), unsafe_allow_html=True)
+
+    METHODS = [
+        ("📐 OLS Regression (Panel)", NAVY,
+         "Ordinary Least Squares on the log-linear model above, estimated on the full DAX panel (2006–2024).",
+         "Produces the fair-value estimate, model deviation, and all 'vs. model' percentages. R²=0.71 means the model explains 71% of pay variation.",
+         ["vs. Model Expectation", "Cumulative Excess Pay", "Model RMSE", "Pay Forecast 2025–2027", "Natural Comparator Group"]),
+        ("📈 Linear Trend Regression (polyfit)", "#7c3aed",
+         "numpy.polyfit(x, y, 1) fit on company-specific time series to estimate year-over-year trend slopes.",
+         "Used whenever we need a direction and speed metric rather than a point value. Slope = change per year in percentage points or euros.",
+         ["LTI Trend Slope", "Model Deviation Drift", "Pay-Headcount Elasticity β", "Pay Stickiness β"]),
+        ("📊 Percentile / Distribution Analysis", "#0891b2",
+         "Rank and quantile operations over the cross-sectional DAX distribution for each year.",
+         "Tells where a company stands relative to its peers in absolute terms. P25/P50/P75 quartile boundaries are computed fresh for each selected year.",
+         ["DAX Peer Rank", "DAX Percentile Position", "Comp per Exec vs. Sector Median"]),
+        ("🔗 Correlation & Scatter Analysis", "#059669",
+         "Pearson correlation and OLS slope estimated on company-specific (pay_yoy, ebit_yoy) or (comp, lag1_comp) pairs.",
+         "Quantifies how tightly pay co-moves with earnings or prior-year pay. Key signal for pay-for-performance alignment.",
+         ["Pay-Performance β (pay-EBIT coupling)", "Pay Stickiness (r)", "Crisis Pay Change"]),
+        ("📦 Rule-Based Flagging", ORANGE,
+         "Boolean conditions applied year-by-year to the raw data: e.g. (comp_yoy > 0) AND (ebit_yoy < 0) AND (empl_yoy < 0).",
+         "Produces the clearest, most defensible governance signals because they are directly auditable from the annual report. No model assumptions required.",
+         ["Bad Times Events", "Restructuring-Bonus Flag", "Anomaly Flag (threshold-based)"]),
+        ("🔴 Statistical Anomaly Detection", RED,
+         "Z-score / percentile-based outlier detection on the compensation structure vector (fixed/STI/LTI shares + level). Pre-computed as anomaly_score_pct.",
+         "Flags company-years where the compensation structure is statistically unusual even after controlling for size and sector — may indicate one-time payments, settlements, or governance failures.",
+         ["Anomaly Flag", "Anomaly Years / Rate", "Governance Risk Score"]),
+        ("🧮 Composite Score Construction", AMBER,
+         "Weighted sum of sub-scores from multiple signals, calibrated to produce 0–100 indices.",
+         "Converts multi-dimensional evidence into a single actionable number. Used for the Governance Risk Score, Proxy Advisor Score, and AGM Defensibility Score.",
+         ["Proxy Advisor Score (ISS/GL modeled)", "AGM Defensibility Score", "Governance Risk Score"]),
+        ("📉 Cumulative Index (base-100)", "#64748b",
+         "np.cumprod(1 + yoy/100) * 100 starting from the first common year at index=100.",
+         "Converts year-on-year growth rates into an accumulated index that makes long-run divergence between two series directly visible as a gap on the chart.",
+         ["Cumulative Exec Pay vs. Headcount Index", "Pay Trend Visualization"]),
+    ]
+
+    for icon_label, color, what, why, used_in in METHODS:
+        used_tags = " ".join([f'<span style="background:#f1f5f9;border-radius:5px;padding:2px 8px;font-size:.72rem;color:{NAVY};margin:2px 2px 2px 0;display:inline-block;">{m}</span>' for m in used_in])
+        st.markdown(f"""<div style="background:white;border-radius:14px;padding:18px 22px;border:1px solid #e2e8f0;margin-bottom:10px;border-left:4px solid {color};">
+            <div style="font-size:.95rem;font-weight:700;color:{NAVY};margin-bottom:6px;">{icon_label}</div>
+            <div style="font-size:.82rem;color:#374151;margin-bottom:4px;"><strong>What:</strong> {what}</div>
+            <div style="font-size:.82rem;color:{GRAY};margin-bottom:8px;"><strong>Why it matters:</strong> {why}</div>
+            <div style="font-size:.72rem;color:{GRAY};margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Used in</div>
+            <div>{used_tags}</div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Section 3: Full KPI table ─────────────────────────────
+    st.markdown(sec_html("Full KPI Reference Table",
+        "Every metric in the app — name, calculation method, interpretation, and which stakeholder pages show it"), unsafe_allow_html=True)
+
+    KPI_TABLE = [
+        # (KPI Name, Method, Green signal, Red signal, Pages)
+        ("Total Compensation (€M)", "Sum of all exec board members' pay (fixed+STI+LTI) before tax", "—", "Very high vs. peers", "All pages"),
+        ("DAX Peer Rank / Percentile", "Cross-sectional rank & quantile of total_comp_bt per year", "Below P50", "Above P75", "All pages"),
+        ("vs. Model Expectation (%)", "(actual − pred_comp) / pred_comp × 100; pred from OLS model", "−15% to +15%", "> +40%", "All pages"),
+        ("Governance Risk Score (0–100)", "Weighted composite: pay gap + anomaly flag + Bad Times count", "< 40", "> 60", "Overview, Capital"),
+        ("Anomaly Flag", "Pre-computed anomaly_score_pct threshold (structural outlier detection)", "Not flagged", "Flagged", "Overview, Accountability"),
+        ("Bad Times Events", "Rule: comp_yoy > 0 AND ebit_yoy < 0 AND empl_yoy < 0, summed", "0 events", "≥ 2 events", "All pages"),
+        ("ESG Share STI / LTI (%)", "sti_esg_share / lti_esg_share from DGAP ESG disclosures", "> 20%", "0% (no link)", "ESG, Overview"),
+        ("Women on Board (%)", "n_female_executives / n_executives × 100", "≥ 30% (ARUG II)", "< 20%", "ESG"),
+        ("CEO/Worker Pay Ratio", "CEO total comp / median employee wage (CSRD field)", "< 40×", "> 80×", "ESG, Employees"),
+        ("Pay vs. EBIT Growth Gap (pp)", "Avg comp_yoy_pct minus avg ebit_yoy_pct over all years", "< 2pp", "> 10pp", "Capital Allocators"),
+        ("Avg. LTI Share (%)", "Mean of lti_pct over all available years for the company", "> 40%", "< 25%", "Capital, Board & HR"),
+        ("CEO/Board Premium (×)", "CEO total comp / avg of other exec board members' total comp", "< 2×", "> 3×", "Capital, Board & HR"),
+        ("Pay-Performance β", "polyfit slope: comp_yoy ~ ebit_yoy (annual % changes)", "0.3–0.8", "< 0 or > 1.2", "Capital Allocators"),
+        ("Cumulative Excess Pay (€M)", "Sum of (actual − pred_comp) over all known years", "< €10M", "> €50M", "Capital Allocators"),
+        ("Longest Overpay Streak (yrs)", "Max consecutive years with actual_vs_expected_pct > +15%", "0–1 yr", "≥ 3 yrs", "Capital, Accountability"),
+        ("LTI Trend Slope (pp/yr)", "polyfit slope on lti_pct time series", "> 0 (rising)", "< −0.5 (falling)", "Capital Allocators"),
+        ("Crisis Pay Change (GFC/COVID)", "comp_yoy_pct in 2009 and 2020 from the raw data", "< 0 (cut)", "> +5% (rose)", "Capital Allocators"),
+        ("DAX Percentile Position (P25/50/75)", "Quantile position in cross-sectional distribution per year", "P25–P50", "Above P75", "Board & HR"),
+        ("Comp per Exec vs. Sector Median", "total_comp / n_exec vs. sector median of same metric", "Within ±20%", "> +25% above", "Board & HR"),
+        ("AGM Defensibility Score (0–100)", "Composite: 40pts model fit + 30pts rank + 30pts structure", "> 65", "< 40", "Board & HR"),
+        ("Model Deviation Drift (pp/yr)", "polyfit slope on actual_vs_expected_pct time series", "< 0 (improving)", "> +2 (worsening)", "Board & HR"),
+        ("Succession Cost Estimate (€K)", "OLS log_board_size coef applied to board size ±1", "—", "—", "Board & HR"),
+        ("Pay vs. Headcount Gap (pp/yr)", "Avg comp_yoy_pct minus avg empl_yoy_pct", "< 2pp", "> 10pp", "Employees"),
+        ("Avg. Headcount Growth (%/yr)", "Mean of empl_yoy_pct over all years", "Positive", "Negative + rising pay", "Employees"),
+        ("Cumulative Indexed Growth (base 100)", "np.cumprod(1 + yoy/100)×100 for pay and headcount separately", "Converging", "Large gap (>50 pts)", "Employees"),
+        ("Pay-Headcount Elasticity β", "polyfit slope: comp_yoy ~ empl_yoy", "> 0.2", "< 0 (inverse)", "Employees"),
+        ("Restructuring-Bonus Flag", "Years with empl_yoy < −2% AND one_year_bonus increasing", "None flagged", "Any year flagged", "Employees"),
+        ("Proxy Advisor Score (0–100)", "Weighted sum: excess pay + Bad Times + anomaly + ESG + CEO prem", "< 30", "> 60", "Accountability"),
+        ("Anomaly Years / Rate (%)", "Count of anomaly-flagged years / total years × 100", "< 20%", "> 40%", "Accountability"),
+        ("DAX Persistent Offenders (count)", "Companies with longest overpay streak ≥ 3 yrs (DAX-wide)", "Few (<5)", "Many (>10)", "Accountability"),
+        ("Model-Fair Comp. (€K)", "OLS point estimate pred_comp for selected year", "—", "—", "Consultants"),
+        ("Model RMSE / MAE (€K)", "sqrt(mean(residuals²)) over all known years for this company", "< €500K", "> €1.5M", "Consultants"),
+        ("Natural Comparator Group", "5 companies with min |pred_comp − sel_pred| in same year", "—", "—", "Consultants"),
+        ("Structure Gap to Sector Med. (pp)", "sector_median_lti − company_lti for selected year", "Within ±5pp", "> 15pp", "Consultants"),
+        ("Pay Stickiness (r / β)", "Pearson r and slope: comp_t ~ comp_{t-1} (lag-1 autocorrelation)", "r > 0.7", "—", "Consultants"),
+        ("Pay Forecast 2025–2027", "last_pred × exp(raw_year_coef)^n using OLS year_trend coefficient", "—", "—", "Consultants"),
+    ]
+
+    rows_html = ""
+    for kpi, method, green, red, pages in KPI_TABLE:
+        rows_html += f"""<tr>
+            <td style="font-weight:600;color:{NAVY};font-size:.8rem;padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">{kpi}</td>
+            <td style="font-size:.77rem;color:#374151;padding:8px 10px;border-bottom:1px solid #f1f5f9;">{method}</td>
+            <td style="font-size:.77rem;color:{GREEN};font-weight:600;padding:8px 10px;border-bottom:1px solid #f1f5f9;">{green}</td>
+            <td style="font-size:.77rem;color:{RED};font-weight:600;padding:8px 10px;border-bottom:1px solid #f1f5f9;">{red}</td>
+            <td style="font-size:.72rem;color:{GRAY};padding:8px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;">{pages}</td>
+        </tr>"""
+
+    st.markdown(f"""<div style="background:white;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.04);">
+        <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr style="background:{NAVY};">
+                    <th style="color:white;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;padding:10px 10px;text-align:left;">KPI / Metric</th>
+                    <th style="color:white;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;padding:10px 10px;text-align:left;">How It Is Calculated</th>
+                    <th style="color:#4ade80;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;padding:10px 10px;text-align:left;">Green Signal</th>
+                    <th style="color:#f87171;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;padding:10px 10px;text-align:left;">Red Signal</th>
+                    <th style="color:#94a3b8;font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;padding:10px 10px;text-align:left;">Pages</th>
+                </tr>
+            </thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;margin-top:16px;">ORBIS/Bureau van Dijk · DGAP Compensation Reports · 43 DAX Companies · 2006–2024</div>', unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════
 # ROUTER
 # ══════════════════════════════════════════════════════════════
 MODULE_FUNCS = {
@@ -2868,6 +3427,10 @@ if screen == "landing":
     show_landing()
 elif screen == "overview":
     show_overview()
+elif screen == "methodology":
+    show_methodology()
+elif screen == "predictor":
+    show_predictor()
 elif screen in STAKEHOLDER_FUNCS:
     STAKEHOLDER_FUNCS[screen]()
 elif screen == "module" and st.session_state.module in MODULE_FUNCS:
