@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from pathlib import Path
+from peer_pages import show_peer_grouping, show_gbr_predictor, show_peer_outlier_detection
 
 st.set_page_config(page_title="ExComp", page_icon="🌱", layout="wide",
                    initial_sidebar_state="expanded")
@@ -30,6 +31,15 @@ html,body,.stApp{{background:{GRAYLT}!important;font-family:'Inter',system-ui,-a
 [data-testid="stSidebar"] .stButton>button{{background:linear-gradient(135deg,#1e3a5f,#132035)!important;color:white!important;border:1px solid #2d4a72!important;border-radius:10px!important}}
 section[data-testid="stSidebar"] hr{{border-color:rgba(255,255,255,.07)!important}}
 .block-container{{padding-top:1.5rem!important;padding-bottom:2rem!important}}
+
+/* Fix: widget labels in main content */
+.stApp [data-testid="stAppViewContainer"] label p{{color:{NAVY}!important;font-weight:600!important;font-size:.85rem!important}}
+.stApp [data-testid="stAppViewContainer"] .stSelectbox label p,
+.stApp [data-testid="stAppViewContainer"] .stMultiSelect label p,
+.stApp [data-testid="stAppViewContainer"] .stSlider label p,
+.stApp [data-testid="stAppViewContainer"] .stNumberInput label p,
+.stApp [data-testid="stAppViewContainer"] .stTextInput label p,
+.stApp [data-testid="stAppViewContainer"] .stCheckbox label p{{color:{NAVY}!important;font-weight:600!important}}
 
 /* ─── HERO ─── */
 .hero{{
@@ -562,12 +572,18 @@ def show_landing():
     st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;margin-top:8px;">ORBIS/Bureau van Dijk · DGAP Compensation Reports · 43 DAX Companies · 2006–2024</div>', unsafe_allow_html=True)
 
     st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
-    bm1, bm2, _ = st.columns([2, 2, 2])
+    bm1, bm2, bm3, bm4 = st.columns(4)
     with bm1:
         if st.button("🧮 Compensation Predictor", key="nav_predictor", use_container_width=True, type="primary"):
             nav("predictor")
     with bm2:
-        if st.button("📖 Methodology & KPI Overview", key="nav_methodology", use_container_width=True):
+        if st.button("👥 Peer Grouping", key="nav_peer_grouping", use_container_width=True, type="primary"):
+            nav("peer_grouping")
+    with bm3:
+        if st.button("⚠️ Outlier Detection", key="nav_outlier_detect", use_container_width=True, type="primary"):
+            nav("outlier_detect")
+    with bm4:
+        if st.button("📖 Methodology", key="nav_methodology", use_container_width=True):
             nav("methodology")
 
 
@@ -3430,10 +3446,14 @@ elif screen == "overview":
 elif screen == "methodology":
     show_methodology()
 elif screen == "predictor":
-    show_predictor()
+    show_gbr_predictor()
 elif screen in STAKEHOLDER_FUNCS:
     STAKEHOLDER_FUNCS[screen]()
 elif screen == "module" and st.session_state.module in MODULE_FUNCS:
     MODULE_FUNCS[st.session_state.module]()
+elif screen == "peer_grouping":
+    show_peer_grouping()
+elif screen == "outlier_detect":
+    show_peer_outlier_detection()
 else:
     show_landing()
