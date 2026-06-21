@@ -503,12 +503,12 @@ def show_landing():
             nav("board")
 
     with col2:
-        st.markdown(f"""<div class="lcard lcard-active">
+        st.markdown("""<div class="lcard">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                 <div><div style="font-size:1.3rem;margin-bottom:2px;">🌱</div>
                 <div style="font-size:.95rem;font-weight:700;color:#0f2744;">ESG &amp; CSRD Governance</div>
                 <div style="font-size:.78rem;color:#64748b;margin-top:2px;">ESG pay integration &amp; governance risks</div></div>
-                <span class="badge-live">✦ Full Analysis</span>
+                <span class="badge-live">✦ Live</span>
             </div>
             <div>
                 <span class="tag tag-orange">🌱 ESG Rating</span>
@@ -516,9 +516,9 @@ def show_landing():
                 <span class="tag tag-orange">♀ Gender Equity</span>
                 <span class="tag tag-orange">📋 CSRD Score</span>
             </div>
-            <div style="margin-top:10px;font-size:.78rem;color:#9a3412;font-style:italic;font-weight:500;">"Is this board compensated fairly — and sustainably?"</div>
+            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Is this board compensated fairly — and sustainably?"</div>
         </div>""", unsafe_allow_html=True)
-        if st.button("→ ESG & CSRD Governance", key="nav_esg", type="primary", use_container_width=True):
+        if st.button("→ ESG & CSRD Governance", key="nav_esg", use_container_width=True):
             nav("esg")
         st.markdown("""<div class="lcard" style="margin-top:8px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
