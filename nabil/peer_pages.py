@@ -463,7 +463,7 @@ def show_gbr_predictor(nav_fn=None):
                     columns={"company_shortname":"Company","role":"Role","actual":"Actual (€K)","predicted":"Predicted (€K)"}),
                     use_container_width=True, hide_index=True)
 
-    with st.expander("📊 Model performance"):
+    with st.expander("📊 Model performance", expanded=True):
         perf=[]
         for k in ["comp_per_seat"]+_TARGETS:
             if k in models:
