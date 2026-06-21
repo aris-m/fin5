@@ -246,19 +246,19 @@ def sec_html(title, sub=""):
     return f'<div class="sec"><div class="sec-title">{title}</div>{sub_html}</div>'
 
 def traffic(pct):
-    if pct is None or np.isnan(pct): return "⚪", GRAY, "Keine Daten"
-    if pct >  40: return "🔴", RED,   f"+{pct:.0f}% deutlich überbezahlt"
-    if pct >  15: return "🟡", AMBER, f"+{pct:.0f}% über Markt"
-    if pct > -15: return "🟢", GREEN, f"{pct:+.0f}% marktkonform"
-    if pct > -40: return "🟡", AMBER, f"{pct:.0f}% unter Markt"
-    return "🔵", "#2563eb", f"{pct:.0f}% deutlich unterbezahlt"
+    if pct is None or np.isnan(pct): return "⚪", GRAY, "No Data"
+    if pct >  40: return "🔴", RED,   f"+{pct:.0f}% significantly overpaid"
+    if pct >  15: return "🟡", AMBER, f"+{pct:.0f}% above market"
+    if pct > -15: return "🟢", GREEN, f"{pct:+.0f}% market-aligned"
+    if pct > -40: return "🟡", AMBER, f"{pct:.0f}% below market"
+    return "🔵", "#2563eb", f"{pct:.0f}% significantly underpaid"
 
 def risk_color(val, hi=60, mid=40):
     if val >= hi: return RED
     if val >= mid: return AMBER
     return GREEN
 
-def sidebar_nav(back_screen, back_label="← Zurück"):
+def sidebar_nav(back_screen, back_label="← Back"):
     with st.sidebar:
         st.markdown(f"""<div style="padding:16px 0 8px 0;">
             <div style="font-size:1.5rem;font-weight:800;color:white;">ExComp</div>
@@ -267,30 +267,29 @@ def sidebar_nav(back_screen, back_label="← Zurück"):
         if st.button(back_label, use_container_width=True):
             nav(back_screen)
         st.divider()
-        st.markdown('<p style="color:#94a3b8;font-size:0.7rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Unternehmen</p>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#94a3b8;font-size:0.7rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Company</p>', unsafe_allow_html=True)
         idx = COMPANIES.index(st.session_state.company) if st.session_state.company in COMPANIES else 0
         co = st.selectbox("", COMPANIES, index=idx, label_visibility="collapsed", key="sb_co")
         if co != st.session_state.company:
             st.session_state.company = co
             st.rerun()
-        st.markdown('<p style="color:#94a3b8;font-size:0.7rem;text-transform:uppercase;letter-spacing:.05em;margin-top:10px;margin-bottom:4px;">Jahr</p>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#94a3b8;font-size:0.7rem;text-transform:uppercase;letter-spacing:.05em;margin-top:10px;margin-bottom:4px;">Year</p>', unsafe_allow_html=True)
         yr_idx = YEARS_ALL.index(st.session_state.year) if st.session_state.year in YEARS_ALL else len(YEARS_ALL)-1
         yr = st.selectbox("", YEARS_ALL, index=yr_idx, label_visibility="collapsed", key="sb_yr")
         if yr != st.session_state.year:
             st.session_state.year = yr
             st.rerun()
-        # Show data-availability hint
         has_rich = yr <= FEATURES_YEAR_MAX
         has_mu   = yr in YEARS_MU
         has_esg  = yr in YEARS_ESG
         if has_rich and has_mu and has_esg:
-            st.markdown(f'<div style="background:#1e3a5f;border-radius:6px;padding:6px 10px;margin-top:4px;font-size:.7rem;color:#4ade80;">📊 Volle Daten verfügbar<br><span style="color:#64748b;">Modell + ESG + Alle Features</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#1e3a5f;border-radius:6px;padding:6px 10px;margin-top:4px;font-size:.7rem;color:#4ade80;">📊 Full Data Available<br><span style="color:#64748b;">Model + ESG + All Features</span></div>', unsafe_allow_html=True)
         elif has_mu and has_esg:
-            st.markdown(f'<div style="background:#1e3a5f;border-radius:6px;padding:6px 10px;margin-top:4px;font-size:.7rem;color:{ORANGE};">🌱 Modell + ESG verfügbar<br><span style="color:#64748b;">Governance-Features nur bis 2021</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#1e3a5f;border-radius:6px;padding:6px 10px;margin-top:4px;font-size:.7rem;color:{ORANGE};">🌱 Model + ESG Available<br><span style="color:#64748b;">Governance features until 2021 only</span></div>', unsafe_allow_html=True)
         elif has_mu:
-            st.markdown(f'<div style="background:#1e3a5f;border-radius:6px;padding:6px 10px;margin-top:4px;font-size:.7rem;color:#94a3b8;">📈 Nur Modelldaten<br><span style="color:#64748b;">ESG-Daten nicht verfügbar</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#1e3a5f;border-radius:6px;padding:6px 10px;margin-top:4px;font-size:.7rem;color:#94a3b8;">📈 Model Data Only<br><span style="color:#64748b;">ESG data not available</span></div>', unsafe_allow_html=True)
         st.divider()
-        st.markdown('<p style="color:#475569;font-size:0.73rem;line-height:1.7;">43 DAX-Unternehmen<br>7.500+ Exec-Beobachtungen<br>OLS R²=0.71 · 2006–2024</p>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#475569;font-size:0.73rem;line-height:1.7;">43 DAX Companies<br>7,500+ Exec Observations<br>OLS R²=0.71 · 2006–2024</p>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════
 # LAYER 1 — LANDING
@@ -302,7 +301,7 @@ def show_landing():
             <div style="font-size:0.73rem;color:#64748b;margin-top:2px;">AI-Powered Pay Intelligence</div>
         </div>""", unsafe_allow_html=True)
         st.divider()
-        st.markdown('<p style="color:#475569;font-size:0.75rem;line-height:1.7;">TUM Science Hackathon 2026<br>Chair of Financial Accounting<br>Prof. Dr. Jürgen Ernstberger<br><br>43 DAX-Unternehmen<br>7.500+ Exec-Beobachtungen<br>2006–2024</p>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#475569;font-size:0.75rem;line-height:1.7;">TUM Science Hackathon 2026<br>Chair of Financial Accounting<br>Prof. Dr. Jürgen Ernstberger<br><br>43 DAX Companies<br>7,500+ Exec Observations<br>2006–2024</p>', unsafe_allow_html=True)
 
     st.markdown(f"""<div class="hero">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;">
@@ -314,20 +313,20 @@ def show_landing():
                 <div style="font-size:2.8rem;font-weight:900;color:white;letter-spacing:-1.5px;line-height:1.05;">ExComp</div>
                 <div style="font-size:.98rem;color:#94a3b8;margin-top:10px;font-weight:400;">AI-Powered Executive Compensation Benchmarking &amp; Red Flag Detection</div>
                 <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:6px;">
-                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">📈 15 Jahre Daten</span>
-                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">🤖 OLS Prognosemodell</span>
-                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">🌱 CSRD-Compliance</span>
-                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">🔍 Anomalie-Detektor</span>
+                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">📈 15 Years of Data</span>
+                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">🤖 OLS Prediction Model</span>
+                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">🌱 CSRD Compliance</span>
+                    <span style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:3px 10px;font-size:.73rem;color:#cbd5e1;">🔍 Anomaly Detector</span>
                 </div>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
                 <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px 22px;text-align:center;min-width:90px;">
                     <div style="font-size:2.4rem;font-weight:900;color:{ORANGE};letter-spacing:-1px;line-height:1;">16<span style="font-size:1.2rem;color:#64748b;">/43</span></div>
-                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">DAX mit ESG-Pay</div>
+                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">DAX with ESG-Pay</div>
                 </div>
                 <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px 22px;text-align:center;min-width:90px;">
                     <div style="font-size:2.4rem;font-weight:900;color:white;letter-spacing:-1px;line-height:1;">0.71</div>
-                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">Modell R²</div>
+                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">Model R²</div>
                 </div>
                 <div style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px 22px;text-align:center;min-width:90px;">
                     <div style="font-size:2.4rem;font-weight:900;color:white;letter-spacing:-1px;line-height:1;">74x</div>
@@ -335,78 +334,102 @@ def show_landing():
                 </div>
                 <div style="background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.25);border-radius:16px;padding:16px 22px;text-align:center;min-width:90px;">
                     <div style="font-size:2.4rem;font-weight:900;color:{ORANGE};letter-spacing:-1px;line-height:1;">63%</div>
-                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">Zahlen 0% auf ESG</div>
+                    <div style="font-size:.65rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;font-weight:600;">Pay 0% on ESG</div>
                 </div>
             </div>
         </div>
     </div>""", unsafe_allow_html=True)
 
     st.markdown("""<div style="text-align:center;margin:6px 0 22px 0;">
-        <div style="font-size:1.05rem;font-weight:700;color:#0a1628;">Wähle deinen Stakeholder-Blickwinkel</div>
-        <div style="font-size:.82rem;color:#64748b;margin-top:4px;">Vier Perspektiven auf Executive Compensation — eine vollständig verfügbare Analyse</div>
+        <div style="font-size:1.05rem;font-weight:700;color:#0a1628;">Choose Your Stakeholder Perspective</div>
+        <div style="font-size:.82rem;color:#64748b;margin-top:4px;">Six perspectives on executive compensation — one fully available analysis</div>
     </div>""", unsafe_allow_html=True)
 
-    col_l, col_r = st.columns(2, gap="large")
-    with col_l:
+    col1, col2, col3 = st.columns(3, gap="large")
+
+    with col1:
         st.markdown("""<div class="lcard lcard-locked">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                 <div><div style="font-size:1.3rem;margin-bottom:2px;">🏦</div>
                 <div style="font-size:.95rem;font-weight:700;color:#0f2744;">Capital Allocators</div>
-                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Folgen dem Geld — wollen Risikosignale</div></div>
-                <span class="badge-soon">In Entwicklung</span>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Follow the money — want risk signals</div></div>
+                <span class="badge-soon">Coming Soon</span>
             </div>
-            <div><span class="tag">📈 Inst. Investoren</span><span class="tag">🌱 ESG Fonds</span><span class="tag">🏛 Banken</span></div>
-            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Ist diese Firma gut genug regiert, um mein Geld zu riskieren?"</div>
+            <div><span class="tag">📈 Inst. Investors</span><span class="tag">🌱 ESG Funds</span><span class="tag">🏛 Banks</span></div>
+            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Is this company governed well enough to trust with my capital?"</div>
         </div>""", unsafe_allow_html=True)
         st.markdown("""<div class="lcard lcard-locked">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-                <div><div style="font-size:1.3rem;margin-bottom:2px;">🏢</div>
-                <div style="font-size:.95rem;font-weight:700;color:#0f2744;">Corporate Insiders</div>
-                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Setzen oder validieren Vergütung</div></div>
-                <span class="badge-soon">In Entwicklung</span>
+                <div><div style="font-size:1.3rem;margin-bottom:2px;">🏛</div>
+                <div style="font-size:.95rem;font-weight:700;color:#0f2744;">Board &amp; HR</div>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Set and validate compensation</div></div>
+                <span class="badge-soon">Coming Soon</span>
             </div>
-            <div><span class="tag">🏛 Aufsichtsrat</span><span class="tag">👷 Betriebsrat</span><span class="tag">📊 HR</span></div>
-            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Wo stehen wir im Marktvergleich?"</div>
+            <div><span class="tag">🏛 Supervisory Board</span><span class="tag">📊 HR</span><span class="tag">📋 Remuneration Committee</span></div>
+            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Where do we stand vs. the market — and is our structure defensible?"</div>
         </div>""", unsafe_allow_html=True)
-    with col_r:
+
+    with col2:
         st.markdown(f"""<div class="lcard lcard-active">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                 <div><div style="font-size:1.3rem;margin-bottom:2px;">🌱</div>
                 <div style="font-size:.95rem;font-weight:700;color:#0f2744;">ESG &amp; CSRD Governance</div>
-                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Misst ESG-Vergütungsintegration &amp; Governance-Risiken</div></div>
-                <span class="badge-live">✦ Vollständig verfügbar</span>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Measures ESG pay integration &amp; governance risks</div></div>
+                <span class="badge-live">✦ Fully Available</span>
             </div>
             <div>
-                <span class="tag tag-orange">📈 Historische Trends</span>
-                <span class="tag tag-orange">🤖 Prognosemodell</span>
+                <span class="tag tag-orange">📈 Historical Trends</span>
+                <span class="tag tag-orange">🤖 Prediction Model</span>
                 <span class="tag tag-orange">⚠️ Governance Risk</span>
                 <span class="tag tag-orange">👥 Peer Benchmarking</span>
-                <span class="tag tag-orange">🔍 Anomalie-Detektor</span>
-                <span class="tag tag-orange">🌱 ESG-Rating</span>
+                <span class="tag tag-orange">🔍 Anomaly Detector</span>
+                <span class="tag tag-orange">🌱 ESG Rating</span>
             </div>
-            <div style="margin-top:10px;font-size:.78rem;color:#9a3412;font-style:italic;font-weight:500;">"Verdient dieser Vorstand angemessen — und warum?"</div>
+            <div style="margin-top:10px;font-size:.78rem;color:#9a3412;font-style:italic;font-weight:500;">"Is this board compensated fairly — and why?"</div>
         </div>""", unsafe_allow_html=True)
-        if st.button("Analyse starten →", type="primary", use_container_width=True):
+        if st.button("Start Analysis →", type="primary", use_container_width=True):
             nav("overview")
+        st.markdown("""<div class="lcard lcard-locked">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                <div><div style="font-size:1.3rem;margin-bottom:2px;">👷</div>
+                <div style="font-size:.95rem;font-weight:700;color:#0f2744;">Employees &amp; Labor</div>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Question fairness and distribution</div></div>
+                <span class="badge-soon">Coming Soon</span>
+            </div>
+            <div><span class="tag">🤝 Works Council</span><span class="tag">⚡ IG Metall / ver.di</span><span class="tag">📉 Pay Ratio</span></div>
+            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Did executive bonuses rise while jobs were being cut?"</div>
+        </div>""", unsafe_allow_html=True)
+
+    with col3:
         st.markdown("""<div class="lcard lcard-locked">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
                 <div><div style="font-size:1.3rem;margin-bottom:2px;">⚖️</div>
                 <div style="font-size:.95rem;font-weight:700;color:#0f2744;">Accountability Actors</div>
-                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Halten Unternehmen rechenschaftspflichtig</div></div>
-                <span class="badge-soon">In Entwicklung</span>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Hold companies accountable</div></div>
+                <span class="badge-soon">Coming Soon</span>
             </div>
             <div><span class="tag">🏛 BaFin</span><span class="tag">🎯 Proxy Advisors</span><span class="tag">📰 NGOs</span></div>
-            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Wer verdient zu viel — und können wir das beweisen?"</div>
+            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Who earns too much — and can we prove it?"</div>
+        </div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="lcard lcard-locked">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                <div><div style="font-size:1.3rem;margin-bottom:2px;">🧮</div>
+                <div style="font-size:.95rem;font-weight:700;color:#0f2744;">Compensation Consultants</div>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">Design and validate compensation systems</div></div>
+                <span class="badge-soon">Coming Soon</span>
+            </div>
+            <div><span class="tag">📐 Mercer / WTW</span><span class="tag">🔬 Korn Ferry</span><span class="tag">📊 Benchmarking</span></div>
+            <div style="margin-top:10px;font-size:.78rem;color:#94a3b8;font-style:italic;">"Does the recommendation I gave hold up against the model?"</div>
         </div>""", unsafe_allow_html=True)
 
-    st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;margin-top:8px;">ORBIS/Bureau van Dijk · DGAP Vergütungsberichte · 43 DAX-Unternehmen · 2006–2024</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;margin-top:8px;">ORBIS/Bureau van Dijk · DGAP Compensation Reports · 43 DAX Companies · 2006–2024</div>', unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════
 # LAYER 2 — OVERVIEW (Company Snapshot + 6 Module Cards)
 # ══════════════════════════════════════════════════════════════
 def show_overview():
-    sidebar_nav("landing", "← Zur Startseite")
+    sidebar_nav("landing", "← Back to Home")
     sel_co   = st.session_state.company
     sel_year = st.session_state.year
     in_model   = sel_co in MODEL_COS     # has rich feature data (54 companies, 2006-2024)
@@ -440,66 +463,66 @@ def show_overview():
 
     t_icon, t_col, t_label = traffic(aep)
 
-    year_note = f"Modell + ESG verfügbar · {sel_year}" if sel_year > FEATURES_YEAR_MAX else f"Volle Daten · {sel_year}"
+    year_note = f"Model + ESG Available · {sel_year}" if sel_year > FEATURES_YEAR_MAX else f"Full Data · {sel_year}"
     st.markdown(f"""<div class="hero">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
             <div>
-                <div style="font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;">Unternehmens-Übersicht</div>
+                <div style="font-size:.7rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;">Company Overview</div>
                 <div style="font-size:2rem;font-weight:900;color:white;letter-spacing:-.5px;margin:4px 0;">{sel_co}</div>
-                <div style="font-size:.84rem;color:#94a3b8;">DAX · {year_note} · Wähle ein Modul</div>
+                <div style="font-size:.84rem;color:#94a3b8;">DAX · {year_note} · Select a Module</div>
             </div>
             <div style="background:rgba(255,255,255,.06);border-radius:12px;padding:12px 20px;text-align:center;">
                 <div style="font-size:1.4rem;font-weight:800;color:{t_col};">{t_icon} {f'{aep:+.0f}%' if aep is not None else '—'}</div>
-                <div style="font-size:.72rem;color:#94a3b8;margin-top:3px;">vs. Modell-Erwartung {sel_year}</div>
+                <div style="font-size:.72rem;color:#94a3b8;margin-top:3px;">vs. Model Expectation {sel_year}</div>
             </div>
         </div>
     </div>""", unsafe_allow_html=True)
     # Banner when actual compensation amounts are not yet available (2022+)
     if sel_year > COMP_DATA_MAX:
         st.markdown(f"""<div style="background:{ORANGEBG};border:1px solid #fed7aa;border-left:4px solid {ORANGE};border-radius:0 10px 10px 0;padding:10px 16px;margin-bottom:16px;font-size:.84rem;color:#431407;">
-            📅 <strong>Jahr {sel_year}:</strong> Prognosemodell, Peer-Ranking und ESG-KPI-Daten vollständig verfügbar.
-            Vergütungsstruktur (STI/LTI-Mix, Schlechte-Zeiten) aus dem Berichtsjahr noch nicht im Datensatz — KI-Prognose aktiv.
+            📅 <strong>Year {sel_year}:</strong> Prediction model, peer ranking and ESG KPI data fully available.
+            Compensation structure (STI/LTI mix, Bad Times) from this reporting year not yet in the dataset — AI forecast active.
         </div>""", unsafe_allow_html=True)
 
     # ── Snapshot KPIs ──
     k1,k2,k3,k4,k5,k6 = st.columns(6)
-    with k1: st.markdown(kpi_html(f"€{total_c/1000:.1f}M" if total_c else "—", "Gesamtvergütung", f"Vorstandsboard {sel_year}", NAVY), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html(f"{gov_sc:.0f}/100" if gov_sc else "—", "Governance Risk", "⚠ Hoch" if gov_sc and gov_sc>60 else "✅ Normal", risk_color(gov_sc or 0), risk_color(gov_sc or 0)), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html(f"Top {100-peer_pct:.0f}%" if peer_pct else "—", "DAX Peer Rang", f"Perzentil {peer_pct:.0f}" if peer_pct else "n/a", NAVY), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html("🚨 Ja" if is_anom else ("✅ Nein" if is_anom is not None else "—"), "Anomalie", "Ungewöhnliche Struktur" if is_anom else "Im Normbereich", RED if is_anom else GREEN, RED if is_anom else GREEN), unsafe_allow_html=True)
-    with k5: st.markdown(kpi_html(f"{esg_tot:.0f}%" if esg_tot else "0%", "ESG in Vergütung", "CSRD-relevant" if esg_tot > 0 else "Kein ESG-Bezug", ORANGE if esg_tot > 0 else "#94a3b8", GREEN if esg_tot > 0 else RED), unsafe_allow_html=True)
+    with k1: st.markdown(kpi_html(f"€{total_c/1000:.1f}M" if total_c else "—", "Total Compensation", f"Executive Board {sel_year}", NAVY), unsafe_allow_html=True)
+    with k2: st.markdown(kpi_html(f"{gov_sc:.0f}/100" if gov_sc else "—", "Governance Risk", "⚠ High" if gov_sc and gov_sc>60 else "✅ Normal", risk_color(gov_sc or 0), risk_color(gov_sc or 0)), unsafe_allow_html=True)
+    with k3: st.markdown(kpi_html(f"Top {100-peer_pct:.0f}%" if peer_pct else "—", "DAX Peer Rank", f"Percentile {peer_pct:.0f}" if peer_pct else "n/a", NAVY), unsafe_allow_html=True)
+    with k4: st.markdown(kpi_html("🚨 Yes" if is_anom else ("✅ No" if is_anom is not None else "—"), "Anomaly", "Unusual Structure" if is_anom else "Within Normal Range", RED if is_anom else GREEN, RED if is_anom else GREEN), unsafe_allow_html=True)
+    with k5: st.markdown(kpi_html(f"{esg_tot:.0f}%" if esg_tot else "0%", "ESG in Compensation", "CSRD-relevant" if esg_tot > 0 else "No ESG Link", ORANGE if esg_tot > 0 else "#94a3b8", GREEN if esg_tot > 0 else RED), unsafe_allow_html=True)
     with k6:
         sz_cnt = int(co_df["schlechte_zeiten"].sum()) if in_model and "schlechte_zeiten" in co_df.columns else 0
-        st.markdown(kpi_html(str(sz_cnt), "Schlechte-Zeiten-Events", "Pay ↑ bei EBIT ↓", RED if sz_cnt > 0 else GREEN, RED if sz_cnt > 0 else GREEN), unsafe_allow_html=True)
+        st.markdown(kpi_html(str(sz_cnt), "Bad Times Events", "Pay ↑ when EBIT ↓", RED if sz_cnt > 0 else GREEN, RED if sz_cnt > 0 else GREEN), unsafe_allow_html=True)
 
-    st.markdown('<div class="sec"><div class="sec-title">Module — wähle eine Analyseebene</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Jedes Modul deckt einen der fünf Hackathon-Anforderungsbereiche ab</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec"><div class="sec-title">Modules — Select an Analysis Level</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Each module covers one of the five hackathon requirement areas</div></div>', unsafe_allow_html=True)
 
     # ── Module Cards 3×2 ──
     MODULES = [
-        ("historical", "📈", "Historische Trends",
-         "Wie hat sich die Vergütung über 15 Jahre entwickelt? Krisenresistenz, STI/LTI-Mix, Strukturwandel.",
-         f"+{co_df['comp_yoy_pct'].mean():.1f}% Ø/Jahr" if in_model and len(co_df)>0 else "2006–2024",
-         "Ø Wachstum p.a.", "#dbeafe", "#1d4ed8"),
-        ("prediction", "🤖", "Prognosemodell",
-         "OLS-Modell schätzt erwartete Vergütung basierend auf Firmengröße, Sektor, Performance & Peer-Gruppe.",
-         f"{aep:+.0f}% vs. Erwartung" if aep is not None else "R²=0.71",
-         f"Modell-Abweichung {sel_year}", "#ede9fe", "#6d28d9"),
+        ("historical", "📈", "Historical Trends",
+         "How has compensation evolved over 15 years? Crisis resilience, STI/LTI mix, structural change.",
+         f"+{co_df['comp_yoy_pct'].mean():.1f}% avg/yr" if in_model and len(co_df)>0 else "2006–2024",
+         "Avg. Growth p.a.", "#dbeafe", "#1d4ed8"),
+        ("prediction", "🤖", "Prediction Model",
+         "OLS model estimates expected compensation based on company size, sector, performance & peer group.",
+         f"{aep:+.0f}% vs. Expected" if aep is not None else "R²=0.71",
+         f"Model Deviation {sel_year}", "#ede9fe", "#6d28d9"),
         ("governance", "⚠️", "Governance Risk Score",
-         "Composite-Score aus Vergütungsvolatilität, CEO-Prämie & 'Schlechte Zeiten' — Warnsignal für Investoren.",
+         "Composite score from compensation volatility, CEO premium & 'Bad Times' — warning signal for investors.",
          f"{gov_sc:.0f}/100" if gov_sc else "n/a",
-         "Ø Governance Risk", "#fef2f2", "#dc2626"),
+         "Avg. Governance Risk", "#fef2f2", "#dc2626"),
         ("peer", "👥", "Peer Benchmarking",
-         "Wo steht dieses Unternehmen vs. DAX-Peers? Sektor- & Größenvergleich mit Modell-Erwartung.",
-         f"Top {100-peer_pct:.0f}%" if peer_pct else "DAX-15",
-         "Peer-Rang im DAX", "#dcfce7", "#15803d"),
-        ("anomaly", "🔍", "Anomalie-Detektor",
-         "Erkennt ungewöhnliche Vergütungsstrukturen: atypischer STI/LTI-Mix, extreme Bonus-Gehalts-Verhältnisse.",
-         "🚨 Anomalie" if is_anom else ("✅ Normal" if is_anom is not None else "—"),
+         "Where does this company stand vs. DAX peers? Sector & size comparison with model expectation.",
+         f"Top {100-peer_pct:.0f}%" if peer_pct else "DAX",
+         "Peer Rank in DAX", "#dcfce7", "#15803d"),
+        ("anomaly", "🔍", "Anomaly Detector",
+         "Detects unusual compensation structures: atypical STI/LTI mix, extreme bonus-to-salary ratios.",
+         "🚨 Anomaly" if is_anom else ("✅ Normal" if is_anom is not None else "—"),
          f"Status {sel_year}", "#fffbeb", "#d97706"),
-        ("esg", "🌱", "ESG-Rating",
-         "CSRD-Compliance, Nachhaltigkeits-Pay-Integration & externer ESG-Validierungscheck.",
-         f"{esg_tot:.0f}% ESG" if esg_tot else "Kein ESG-Bezug",
-         "ESG-Anteil STI+LTI", "#f0fdf4", "#16a34a"),
+        ("esg", "🌱", "ESG Rating",
+         "CSRD compliance, sustainability pay integration & external ESG validation check.",
+         f"{esg_tot:.0f}% ESG" if esg_tot else "No ESG Link",
+         "ESG Share STI+LTI", "#f0fdf4", "#16a34a"),
     ]
 
     cols_r1 = st.columns(3, gap="medium")
@@ -508,7 +531,7 @@ def show_overview():
     for i, (key, icon, title, desc, stat, statlbl, icon_bg, icon_fg) in enumerate(MODULES):
         col = cols_r1[i] if i < 3 else cols_r2[i-3]
         with col:
-            stat_color = RED if ("Anomalie" in stat or "n/a" in str(stat)) else ORANGE if "%" in str(stat) else NAVY
+            stat_color = RED if ("Anomaly" in stat or "n/a" in str(stat)) else ORANGE if "%" in str(stat) else NAVY
             st.markdown(f"""<div class="mod-card">
                 <div class="mod-icon-wrap" style="background:{icon_bg};">{icon}</div>
                 <div class="mod-title">{title}</div>
@@ -541,39 +564,39 @@ def module_header(icon, title, subtitle, sel_co, sel_year):
 # MODULE 1 — HISTORISCHE TRENDS
 # ─────────────────────────────────────────────
 def show_historical():
-    sidebar_nav("overview", "← Zur Übersicht")
+    sidebar_nav("overview", "← Back to Overview")
     sel_co, sel_year = st.session_state.company, st.session_state.year
     in_model = sel_co in MODEL_COS
     co_df  = df[df["company_shortname"] == sel_co].sort_values("year")
     co_esg = esg[esg["company_shortname"] == sel_co].sort_values("year") if len(esg) > 0 else pd.DataFrame()
     dax_avg = df.groupby("year")["total_comp_bt"].mean().reset_index()
 
-    module_header("📈", "Historische Trends", f"Vergütungsentwicklung 2006–2024 · DAX-Vergleich · Strukturwandel", sel_co, sel_year)
+    module_header("📈", "Historical Trends", f"Compensation development 2006–2024 · DAX comparison · Structural change", sel_co, sel_year)
 
     st.markdown("""<div class="insight">
-        <strong>Was zeigt dieses Modul?</strong> 15 Jahre Vergütungsdaten offenbaren: Wie krisenresistent ist die Vergütung?
-        Wächst sie schneller als die operative Leistung? Hat sich der STI/LTI-Mix über Zeit verändert?
-        Diese Fragen sind zentral für die CSRD-Berichterstattung und die Governance-Bewertung.
+        <strong>What does this module show?</strong> 15 years of compensation data reveal: How crisis-resistant is pay?
+        Does it grow faster than operating performance? Has the STI/LTI mix shifted over time?
+        These questions are central to CSRD reporting and governance assessment.
     </div>""", unsafe_allow_html=True)
 
     col_l, col_r = st.columns([3, 2], gap="large")
 
     with col_l:
-        st.markdown('<div class="sec"><div class="sec-title">Vergütungstrend vs. DAX-Durchschnitt</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Gesamtvergütung Vorstand (€ Tsd.) — blaue Linie = ausgewähltes Unternehmen</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Compensation Trend vs. DAX Average</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Total board compensation (€K) — orange line = selected company</div></div>', unsafe_allow_html=True)
         if in_model and len(co_df) > 0:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=dax_avg["year"], y=dax_avg["total_comp_bt"],
                 fill="tozeroy", fillcolor="rgba(148,163,184,.08)",
                 line=dict(color="#94a3b8", dash="dot", width=1.5),
-                name="DAX-Durchschnitt",
-                hovertemplate="DAX ø: €%{y:,.0f}K<extra></extra>"))
+                name="DAX Average",
+                hovertemplate="DAX avg: €%{y:,.0f}K<extra></extra>"))
             fig.add_trace(go.Scatter(x=co_df["year"], y=co_df["total_comp_bt"],
                 line=dict(color=ORANGE, width=3),
                 mode="lines+markers", marker=dict(size=5),
                 name=sel_co,
                 hovertemplate=f"{sel_co}: €%{{y:,.0f}}K<extra></extra>"))
             # Crisis annotations
-            crises = [(2009,"GFC"),(2012,"Euro-Krise"),(2020,"COVID")]
+            crises = [(2009,"GFC"),(2012,"Euro Crisis"),(2020,"COVID")]
             for yr, lbl in crises:
                 if yr in co_df["year"].values:
                     fig.add_vline(x=yr, line_dash="dot", line_color="#e2e8f0", line_width=1,
@@ -581,7 +604,7 @@ def show_historical():
                                   annotation_position="top")
             fig.update_layout(height=320, margin=dict(l=0,r=0,t=10,b=0),
                 plot_bgcolor="white", paper_bgcolor="white",
-                yaxis=dict(title="Gesamtverg. (€ Tsd.)", gridcolor=GRAYLT),
+                yaxis=dict(title="Total Comp. (€K)", gridcolor=GRAYLT),
                 xaxis=dict(gridcolor=GRAYLT),
                 legend=dict(orientation="h", yanchor="bottom", y=1.01),
                 hovermode="x unified")
@@ -593,19 +616,19 @@ def show_historical():
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(x=esg_avg["year"], y=esg_avg["avg_comp"],
                     line=dict(color="#94a3b8", dash="dot", width=1.5),
-                    name="DAX ø Ø Vergütung"))
+                    name="DAX Avg. Compensation"))
                 fig.add_trace(go.Scatter(x=co_esg["year"], y=co_esg["avg_comp"],
                     line=dict(color=ORANGE, width=3), mode="lines+markers",
                     name=sel_co))
                 fig.update_layout(height=320, margin=dict(l=0,r=0,t=10,b=0),
                     plot_bgcolor="white", paper_bgcolor="white",
-                    yaxis=dict(title="Ø Vergütung (€ Tsd.)", gridcolor=GRAYLT),
+                    yaxis=dict(title="Avg. Compensation (€K)", gridcolor=GRAYLT),
                     xaxis=dict(gridcolor=GRAYLT),
                     legend=dict(orientation="h", yanchor="bottom", y=1.01))
                 st.plotly_chart(fig, use_container_width=True)
 
     with col_r:
-        st.markdown('<div class="sec"><div class="sec-title">Key Metriken</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Key Metrics</div></div>', unsafe_allow_html=True)
         if in_model and len(co_df) > 0:
             comp_06 = co_df[co_df["year"]==2006]["total_comp_bt"].values
             comp_last = co_df["total_comp_bt"].dropna().iloc[-1] if co_df["total_comp_bt"].notna().any() else None
@@ -618,15 +641,15 @@ def show_historical():
             covid_chg = float(crisis_covid[0]) if len(crisis_covid)>0 else None
 
             rows = [
-                ("Gesamtwachstum", f"+{total_growth:.0f}%" if total_growth else "—",
+                ("Total Growth", f"+{total_growth:.0f}%" if total_growth else "—",
                  RED if total_growth and total_growth>150 else GREEN),
-                ("Ø Wachstum p.a.", f"{avg_yoy:+.1f}%" if pd.notna(avg_yoy) else "—", ORANGE),
-                ("Ø EBIT-Wachstum p.a.", f"{avg_ebit:+.1f}%" if avg_ebit and pd.notna(avg_ebit) else "—", GRAY),
-                ("Pay > EBIT Wachstum", "⚠ Ja" if avg_ebit and pd.notna(avg_ebit) and avg_yoy > avg_ebit else "✅ Nein",
+                ("Avg. Growth p.a.", f"{avg_yoy:+.1f}%" if pd.notna(avg_yoy) else "—", ORANGE),
+                ("Avg. EBIT Growth p.a.", f"{avg_ebit:+.1f}%" if avg_ebit and pd.notna(avg_ebit) else "—", GRAY),
+                ("Pay > EBIT Growth", "⚠ Yes" if avg_ebit and pd.notna(avg_ebit) and avg_yoy > avg_ebit else "✅ No",
                  RED if avg_ebit and pd.notna(avg_ebit) and avg_yoy > avg_ebit else GREEN),
-                ("Vergütung in COVID-Jahr", f"{covid_chg:+.1f}%" if covid_chg and pd.notna(covid_chg) else "—",
+                ("Compensation in COVID Year", f"{covid_chg:+.1f}%" if covid_chg and pd.notna(covid_chg) else "—",
                  RED if covid_chg and covid_chg > 0 else GREEN),
-                ("3J-Volatilität", f"{vol_3yr:.1f}%" if vol_3yr and pd.notna(vol_3yr) else "—",
+                ("3Y Volatility", f"{vol_3yr:.1f}%" if vol_3yr and pd.notna(vol_3yr) else "—",
                  RED if vol_3yr and vol_3yr > 25 else GRAY),
             ]
             st.markdown('<div style="background:white;border-radius:12px;padding:14px 16px;border:1px solid #e2e8f0;">', unsafe_allow_html=True)
@@ -636,36 +659,36 @@ def show_historical():
 
             if avg_ebit and pd.notna(avg_ebit) and avg_yoy > avg_ebit + 5:
                 st.markdown(f"""<div class="flag-red" style="margin-top:12px;">
-                    <strong>⚠ Pay-Performance-Lücke:</strong> Vergütungswachstum ({avg_yoy:.1f}% p.a.)
-                    übertrifft EBIT-Wachstum ({avg_ebit:.1f}% p.a.) deutlich — ein klassisches
-                    Governance-Warnsignal.
+                    <strong>⚠ Pay-Performance Gap:</strong> Compensation growth ({avg_yoy:.1f}% p.a.)
+                    significantly exceeds EBIT growth ({avg_ebit:.1f}% p.a.) — a classic
+                    governance warning signal.
                 </div>""", unsafe_allow_html=True)
         else:
-            st.info("Detaillierte Feature-Daten nur für Kerngruppe verfügbar.")
+            st.info("Detailed feature data only available for the core group.")
 
     # Comp Structure Evolution
     if in_model and len(co_df) > 0 and all(c in co_df.columns for c in ["fixed_pct","sti_pct","lti_pct"]):
-        st.markdown('<div class="sec"><div class="sec-title">Vergütungsstruktur-Evolution (Fix / STI / LTI)</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Wie hat sich der Mix aus fixer und variabler Vergütung verändert?</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Compensation Structure Evolution (Fixed / STI / LTI)</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">How has the mix of fixed and variable compensation changed over time?</div></div>', unsafe_allow_html=True)
         st.markdown("""<div class="insight">
-            <strong>Warum relevant?</strong> Ein steigender LTI-Anteil stärkt langfristige Pay-for-Performance-Anreize.
-            Starke STI-Dominanz kann kurzfristiges Denken fördern. CSRD verlangt Offenlegung der Incentive-Struktur.
+            <strong>Why relevant?</strong> A rising LTI share strengthens long-term pay-for-performance incentives.
+            Strong STI dominance can encourage short-term thinking. CSRD requires disclosure of the incentive structure.
         </div>""", unsafe_allow_html=True)
         fig2 = go.Figure()
-        fig2.add_trace(go.Bar(name="Fix", x=co_df["year"], y=co_df["fixed_pct"], marker_color="#3b82f6"))
-        fig2.add_trace(go.Bar(name="STI (Kurzfrist)", x=co_df["year"], y=co_df["sti_pct"], marker_color=ORANGE))
-        fig2.add_trace(go.Bar(name="LTI (Langfrist)", x=co_df["year"], y=co_df["lti_pct"], marker_color=NAVY))
+        fig2.add_trace(go.Bar(name="Fixed", x=co_df["year"], y=co_df["fixed_pct"], marker_color="#3b82f6"))
+        fig2.add_trace(go.Bar(name="STI (Short-term)", x=co_df["year"], y=co_df["sti_pct"], marker_color=ORANGE))
+        fig2.add_trace(go.Bar(name="LTI (Long-term)", x=co_df["year"], y=co_df["lti_pct"], marker_color=NAVY))
         fig2.update_layout(barmode="stack", height=260, margin=dict(l=0,r=0,t=10,b=0),
             plot_bgcolor="white", paper_bgcolor="white",
-            yaxis=dict(title="Anteil (%)", range=[0,100], gridcolor=GRAYLT),
+            yaxis=dict(title="Share (%)", range=[0,100], gridcolor=GRAYLT),
             xaxis=dict(gridcolor=GRAYLT),
             legend=dict(orientation="h", yanchor="bottom", y=1.01))
         st.plotly_chart(fig2, use_container_width=True)
 
 # ─────────────────────────────────────────────
-# MODULE 2 — PROGNOSEMODELL
+# MODULE 2 — PREDICTION MODEL
 # ─────────────────────────────────────────────
 def show_prediction():
-    sidebar_nav("overview", "← Zur Übersicht")
+    sidebar_nav("overview", "← Back to Overview")
     sel_co, sel_year = st.session_state.company, st.session_state.year
     in_model = sel_co in MODEL_COS
     in_mu    = sel_co in MU_COS
@@ -673,54 +696,53 @@ def show_prediction():
     co_mu_all = mu[mu["company_shortname"] == sel_co].sort_values("year")
     co_df     = df[df["company_shortname"] == sel_co].sort_values("year")  # rich features 2006-2024
 
-    module_header("🤖", "Prognosemodell", f"OLS-Regressionsmodell · R²=0.71 · Expected vs. Actual Pay · 2007–{MODEL_YEAR_MAX}", sel_co, sel_year)
+    module_header("🤖", "Prediction Model", f"OLS Regression Model · R²=0.71 · Expected vs. Actual Pay · 2007–{MODEL_YEAR_MAX}", sel_co, sel_year)
 
     st.markdown("""<div class="insight">
-        <strong>Wie funktioniert das Modell?</strong> Unser OLS-Modell schätzt die erwartete Vorstandsvergütung
-        basierend auf: Vorjahresvergütung (Pay Stickiness), Vorstandsgröße, Sektor und Jahrestrend.
-        Liegt ein Unternehmen >15% über der Erwartung, deutet das auf einen möglichen Governance-Issue hin.
-        R²=0.71 bedeutet: 71% der Vergütungsvariation werden durch das Modell erklärt.
-        Das Modell gilt für alle 42 DAX-Unternehmen von 2007 bis 2024.
+        <strong>How does the model work?</strong> Our OLS model estimates expected executive compensation
+        based on: prior-year compensation (pay stickiness), board size, sector and year trend.
+        If a company is >15% above expectation, this indicates a potential governance issue.
+        R²=0.71 means: 71% of compensation variation is explained by the model.
+        The model covers all 42 DAX companies from 2007 to 2024.
     </div>""", unsafe_allow_html=True)
 
     col_l, col_r = st.columns([3, 2], gap="large")
 
     with col_l:
-        st.markdown('<div class="sec"><div class="sec-title">Tatsächlich vs. Modell-Erwartung</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Oranger Bereich = 80% Erwartungsintervall · Blaue Linie = Tatsächliche Vergütung</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Actual vs. Model Expectation</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Orange band = 80% expectation interval · Navy line = Actual compensation</div></div>', unsafe_allow_html=True)
         if in_mu and len(co_mu_all) > 0 and co_mu_all["pred_comp"].notna().any():
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=list(co_mu_all["year"])+list(co_mu_all["year"])[::-1],
                 y=list(co_mu_all["pred_comp_high"])+list(co_mu_all["pred_comp_low"])[::-1],
                 fill="toself", fillcolor="rgba(249,115,22,.10)",
-                line=dict(color="rgba(0,0,0,0)"), name="80% Erwartungsband"))
+                line=dict(color="rgba(0,0,0,0)"), name="80% Expectation Band"))
             fig.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["pred_comp"],
                 line=dict(color=ORANGE, dash="dash", width=2),
-                name="Modell-Erwartung",
-                hovertemplate="Erwartet: €%{y:,.0f}K<extra></extra>"))
+                name="Model Expectation",
+                hovertemplate="Expected: €%{y:,.0f}K<extra></extra>"))
             fig.add_trace(go.Scatter(x=co_mu_all["year"], y=co_mu_all["total_comp_bt"],
                 line=dict(color=NAVY, width=3), mode="lines+markers",
-                name="Tatsächlich",
-                hovertemplate="Tatsächlich: €%{y:,.0f}K<extra></extra>"))
-            # Flag overpaid years
+                name="Actual",
+                hovertemplate="Actual: €%{y:,.0f}K<extra></extra>"))
             over = co_mu_all[co_mu_all["actual_vs_expected_pct"] > 40]
             if len(over) > 0:
                 fig.add_trace(go.Scatter(x=over["year"], y=over["total_comp_bt"],
                     mode="markers", marker=dict(symbol="x", size=14, color=RED, line=dict(width=2.5)),
-                    name="⚠ Deutlich überbezahlt",
-                    hovertemplate="⚠ Jahr %{x}: deutlich über Erwartung<extra></extra>"))
+                    name="⚠ Significantly Overpaid",
+                    hovertemplate="⚠ Year %{x}: significantly above expectation<extra></extra>"))
             fig.update_layout(height=330, margin=dict(l=0,r=0,t=10,b=0),
                 plot_bgcolor="white", paper_bgcolor="white",
-                yaxis=dict(title="Gesamtvergütung (€ Tsd.)", gridcolor=GRAYLT),
+                yaxis=dict(title="Total Compensation (€K)", gridcolor=GRAYLT),
                 xaxis=dict(gridcolor=GRAYLT),
                 legend=dict(orientation="h", yanchor="bottom", y=1.01),
                 hovermode="x unified")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info(f"{sel_co} nicht im Modell-Universum — keine Prediction verfügbar.")
+            st.info(f"{sel_co} not in the model universe — no prediction available.")
 
     with col_r:
-        st.markdown('<div class="sec"><div class="sec-title">Abweichung vom Modell</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Positiv = überbezahlt, Negativ = unterbezahlt</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Deviation from Model</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Positive = overpaid, Negative = underpaid</div></div>', unsafe_allow_html=True)
         if in_mu and co_mu_all["actual_vs_expected_pct"].notna().any():
             aep_series = co_mu_all.dropna(subset=["actual_vs_expected_pct"])
             colors_aep = [RED if v>15 else GREEN if v<-15 else AMBER for v in aep_series["actual_vs_expected_pct"]]
@@ -730,11 +752,11 @@ def show_prediction():
                 hovertemplate="Jahr %{x}: %{y:+.1f}%<extra></extra>"))
             fig2.add_hline(y=0, line_color=GRAY, line_width=1)
             fig2.add_hline(y=15, line_dash="dot", line_color=AMBER, line_width=1,
-                           annotation_text="+15% Schwelle", annotation_font=dict(size=8))
+                           annotation_text="+15% Threshold", annotation_font=dict(size=8))
             fig2.add_hline(y=-15, line_dash="dot", line_color="#2563eb", line_width=1)
             fig2.update_layout(height=260, margin=dict(l=0,r=0,t=10,b=0),
                 plot_bgcolor="white", paper_bgcolor="white",
-                yaxis=dict(title="vs. Erwartung (%)", gridcolor=GRAYLT),
+                yaxis=dict(title="vs. Expectation (%)", gridcolor=GRAYLT),
                 xaxis=dict(gridcolor=GRAYLT))
             st.plotly_chart(fig2, use_container_width=True)
 
@@ -744,23 +766,23 @@ def show_prediction():
                 icon, col, lbl = traffic(aep_now)
                 st.markdown(f"""<div style="background:{NAVY};border-radius:10px;padding:14px;text-align:center;">
                     <div style="font-size:1.8rem;font-weight:800;color:{col};">{aep_now:+.1f}%</div>
-                    <div style="font-size:.72rem;color:#94a3b8;text-transform:uppercase;margin-top:4px;">vs. Modell {sel_year}</div>
+                    <div style="font-size:.72rem;color:#94a3b8;text-transform:uppercase;margin-top:4px;">vs. Model {sel_year}</div>
                     <div style="font-size:.82rem;color:{col};margin-top:6px;font-weight:600;">{icon} {lbl}</div>
                 </div>""", unsafe_allow_html=True)
         else:
-            st.info("Nicht im Modell-Universum.")
+            st.info("Not in the model universe.")
 
     # Feature Importance
-    st.markdown('<div class="sec"><div class="sec-title">Was treibt die Vergütung? — Modell-Koeffizienten</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Wie stark beeinflusst jeder Faktor das Vergütungsniveau? (Effekt in %)</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec"><div class="sec-title">What drives compensation? — Model Coefficients</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">How strongly does each factor influence the compensation level? (effect in %)</div></div>', unsafe_allow_html=True)
     st.markdown("""<div class="insight">
-        <strong>Interpretation:</strong> "log_comp_lag1 +131%" bedeutet: die Vorjahresvergütung ist der
-        stärkste Einzeltreiber — Vergütung klebt (Pay Stickiness). Branchendummies zeigen, wie viel
-        Industrie-Zugehörigkeit allein die Vergütung nach oben oder unten bewegt, unabhängig von Performance.
+        <strong>Interpretation:</strong> "log_comp_lag1 +131%" means: prior-year compensation is the
+        strongest single driver — pay is sticky. Sector dummies show how much industry membership alone
+        moves compensation up or down, independent of performance.
     </div>""", unsafe_allow_html=True)
     top_c = coefs[coefs["feature"] != "intercept"].sort_values("exp_effect_pct", ascending=True)
-    lbl_map = {"log_comp_lag1":"Vorjahresvergütung (Stickiness)","year_trend":"Jahrestrend",
-               "log_board_size":"Vorstandsgröße (log)"}
-    top_c["label"] = top_c["feature"].apply(lambda x: lbl_map.get(x, x.replace("sector_","Sektor: ").replace("_"," ")))
+    lbl_map = {"log_comp_lag1":"Prior-Year Compensation (Stickiness)","year_trend":"Year Trend",
+               "log_board_size":"Board Size (log)"}
+    top_c["label"] = top_c["feature"].apply(lambda x: lbl_map.get(x, x.replace("sector_","Sector: ").replace("_"," ")))
     fig3 = go.Figure(go.Bar(
         x=top_c["exp_effect_pct"], y=top_c["label"], orientation="h",
         marker_color=[GREEN if v>0 else RED for v in top_c["exp_effect_pct"]],
@@ -768,7 +790,7 @@ def show_prediction():
         hovertemplate="%{y}: %{x:+.0f}%<extra></extra>"))
     fig3.update_layout(height=380, margin=dict(l=0,r=0,t=10,b=0),
         plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(title="Effekt auf Vergütungsniveau (%)", gridcolor=GRAYLT),
+        xaxis=dict(title="Effect on Compensation Level (%)", gridcolor=GRAYLT),
         yaxis=dict(tickfont=dict(size=10)))
     st.plotly_chart(fig3, use_container_width=True)
 
@@ -776,24 +798,24 @@ def show_prediction():
 # MODULE 3 — GOVERNANCE RISK SCORE
 # ─────────────────────────────────────────────
 def show_governance():
-    sidebar_nav("overview", "← Zur Übersicht")
+    sidebar_nav("overview", "← Back to Overview")
     sel_co, sel_year = st.session_state.company, st.session_state.year
     in_model = sel_co in MODEL_COS
     co_df = df[df["company_shortname"] == sel_co].sort_values("year")
 
-    module_header("⚠️", "Governance Risk Score", "Composite-Score · Schlechte-Zeiten-Analyse · CEO-Prämien · Red Flags", sel_co, sel_year)
+    module_header("⚠️", "Governance Risk Score", "Composite Score · Bad Times Analysis · CEO Premiums · Red Flags", sel_co, sel_year)
 
     st.markdown("""<div class="insight">
-        <strong>Was ist der Governance Risk Score?</strong> Ein Composite aus: Vergütungsvolatilität,
-        CEO-Aufschlag gegenüber dem Restvorstand, Peer-Abweichung und "Schlechte-Zeiten"-Events
-        (Vergütung stieg, obwohl EBIT <em>und</em> Headcount sanken). Hohe Werte sind ein Warnsignal
-        für institutionelle Investoren und Proxy Advisors bei Say-on-Pay-Abstimmungen.
+        <strong>What is the Governance Risk Score?</strong> A composite of: compensation volatility,
+        CEO premium over the rest of the board, peer deviation and "Bad Times" events
+        (compensation rose despite EBIT <em>and</em> headcount falling). High scores are a warning signal
+        for institutional investors and proxy advisors at Say-on-Pay votes.
     </div>""", unsafe_allow_html=True)
 
     col_l, col_r = st.columns([3, 2], gap="large")
 
     with col_l:
-        st.markdown('<div class="sec"><div class="sec-title">Governance Risk Heatmap — DAX Kerngruppe</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Rot = hohes Risiko · Grün = niedriges Risiko · Orangener Rahmen = ausgewähltes Unternehmen</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Governance Risk Heatmap — DAX Core Group</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Red = high risk · Green = low risk · Orange outline = selected company</div></div>', unsafe_allow_html=True)
         if "anomaly_score_pct" in df.columns:
             pivot = df.pivot_table(index="company_shortname", columns="year", values="anomaly_score_pct")
             last_yr = pivot.columns.max()
@@ -826,7 +848,7 @@ def show_governance():
             # Score badge
             sc_fg = "#4ade80" if avg_sc < 40 else "#fbbf24" if avg_sc < 60 else "#f87171"
             sc_bg = "#14532d" if avg_sc < 40 else "#713f12" if avg_sc < 60 else "#7f1d1d"
-            sc_lbl = "Niedriges Risiko" if avg_sc < 40 else "Moderates Risiko" if avg_sc < 60 else "Hohes Risiko"
+            sc_lbl = "Low Risk" if avg_sc < 40 else "Moderate Risk" if avg_sc < 60 else "High Risk"
             st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-bottom:14px;">
                 <div style="font-size:2.6rem;font-weight:800;color:{sc_fg};line-height:1;">{avg_sc:.0f}<span style="font-size:1.2rem;color:#475569;">/100</span></div>
                 <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">Ø Governance Risk Score</div>
@@ -836,16 +858,16 @@ def show_governance():
             # Red flags
             flags = [
                 (sz_cnt > 0,
-                 f"⚠ {sz_cnt}× Schlechte-Zeiten-Event(s): Vergütung ↑ bei EBIT ↓ ({list(sz_rows['year'].astype(int)) if len(sz_rows)>0 else ''})",
+                 f"⚠ {sz_cnt}× Bad Times Event(s): Pay ↑ when EBIT ↓ ({list(sz_rows['year'].astype(int)) if len(sz_rows)>0 else ''})",
                  "red"),
                 (ceo_prem and ceo_prem > 2.5,
-                 f"⚠ Hohe CEO-Prämie: {ceo_prem:.1f}x Ø Vorstand (DAX-Median ~2x)",
+                 f"⚠ High CEO Premium: {ceo_prem:.1f}x avg. board (DAX median ~2x)",
                  "amber"),
                 (aep_over > 0,
-                 f"⚠ {aep_over} Jahr(e) mit >+40% über Modell-Erwartung",
+                 f"⚠ {aep_over} year(s) with >+40% above model expectation",
                  "red"),
                 (vol and vol > 25,
-                 f"⚠ Hohe Vergütungsvolatilität: Ø {vol:.0f}% Std. über 3 Jahre",
+                 f"⚠ High compensation volatility: avg. {vol:.0f}% std. over 3 years",
                  "amber"),
             ]
             has_flag = False
@@ -855,41 +877,41 @@ def show_governance():
                     st.markdown(f'<div class="{cls}">{text}</div>', unsafe_allow_html=True)
                     has_flag = True
             if not has_flag:
-                st.markdown(f'<div class="flag-green">✅ Keine wesentlichen Governance Red Flags erkannt.</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="flag-green">✅ No significant governance red flags detected.</div>', unsafe_allow_html=True)
         else:
-            st.info(f"Governance Risk Score nur für Kerngruppe. {sel_co} ist nicht enthalten.")
+            st.info(f"Governance Risk Score only available for the core group. {sel_co} is not included.")
 
-    # Schlechte Zeiten Tabelle
-    st.markdown('<div class="sec"><div class="sec-title">Schlechte-Zeiten-Ereignisse — DAX Kerngruppe</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Vergütung stieg, obwohl EBIT und Headcount sanken — klarer Pay-for-Performance-Verstoß</div></div>', unsafe_allow_html=True)
+    # Bad Times Table
+    st.markdown('<div class="sec"><div class="sec-title">Bad Times Events — DAX Core Group</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Compensation rose despite falling EBIT and headcount — a clear pay-for-performance violation</div></div>', unsafe_allow_html=True)
     if "schlechte_zeiten" in df.columns:
         sz_all = df[df["schlechte_zeiten"]==1][["company_shortname","year","comp_yoy_pct","ebit_yoy_pct","empl_yoy_pct","schlechte_zeiten_score"]].sort_values("schlechte_zeiten_score", ascending=False)
         if len(sz_all) > 0:
             st.dataframe(sz_all.rename(columns={
-                "company_shortname":"Unternehmen","year":"Jahr",
-                "comp_yoy_pct":"Vergütung %","ebit_yoy_pct":"EBIT %",
-                "empl_yoy_pct":"Headcount %","schlechte_zeiten_score":"Schwere"
+                "company_shortname":"Company","year":"Year",
+                "comp_yoy_pct":"Comp %","ebit_yoy_pct":"EBIT %",
+                "empl_yoy_pct":"Headcount %","schlechte_zeiten_score":"Severity"
             }).round(1), use_container_width=True, hide_index=True)
         else:
-            st.success("Keine Schlechte-Zeiten-Ereignisse gefunden.")
+            st.success("No Bad Times events found.")
 
 # ─────────────────────────────────────────────
 # MODULE 4 — PEER BENCHMARKING
 # ─────────────────────────────────────────────
 def show_peer():
-    sidebar_nav("overview", "← Zur Übersicht")
+    sidebar_nav("overview", "← Back to Overview")
     sel_co, sel_year = st.session_state.company, st.session_state.year
     in_model = sel_co in MODEL_COS
     # Use model_universe for full 42-company peer comparison (2007-2024)
     year_data = mu[mu["year"] == sel_year].sort_values("total_comp_bt", ascending=False)
     co_df = df[df["company_shortname"] == sel_co]  # rich features for sector comparison
 
-    module_header("👥", "Peer Benchmarking", f"DAX-Universum Vergleich · {sel_year} · 42 Unternehmen · Sektorpositioning", sel_co, sel_year)
+    module_header("👥", "Peer Benchmarking", f"DAX Universe Comparison · {sel_year} · 42 Companies · Sector Positioning", sel_co, sel_year)
 
     st.markdown("""<div class="insight">
-        <strong>Peer Benchmarking:</strong> Vergleicht die tatsächliche Vergütung mit dem Modell-Erwartungsband
-        aller DAX-Unternehmen im gleichen Jahr. Farbe = Benchmark-Signal:
-        🔴 deutlich überbezahlt · 🟡 über/unter Markt · 🟢 marktkonform.
-        Zusätzlich: Wie steht das Unternehmen im Sektor-Peer-Vergleich?
+        <strong>Peer Benchmarking:</strong> Compares actual compensation against the model expectation band
+        for all DAX companies in the same year. Color = benchmark signal:
+        🔴 significantly overpaid · 🟡 above/below market · 🟢 market-aligned.
+        Additionally: how does the company rank in its sector peer group?
     </div>""", unsafe_allow_html=True)
 
     if len(year_data) > 0:
@@ -900,12 +922,12 @@ def show_peer():
         aep    = float(co_mu_yr["actual_vs_expected_pct"].iloc[0]) if len(co_mu_yr)>0 and co_mu_yr["actual_vs_expected_pct"].notna().any() else None
         total  = float(co_mu_yr["total_comp_bt"].iloc[0]) if len(co_mu_yr)>0 and co_mu_yr["total_comp_bt"].notna().any() else None
         _, t_col, t_lbl = traffic(aep)
-        with k1: st.markdown(kpi_html(f"#{rank}" if rank else "—", "Peer-Rang DAX", f"von {len(year_data)} Unternehmen"), unsafe_allow_html=True)
-        with k2: st.markdown(kpi_html(f"Top {100-pctile:.0f}%" if pctile else "—", "Perzentil", f"Vergütungshöhe {sel_year}"), unsafe_allow_html=True)
-        with k3: st.markdown(kpi_html(f"{aep:+.0f}%" if aep is not None else "—", "vs. Modell", t_lbl, t_col, t_col), unsafe_allow_html=True)
-        with k4: st.markdown(kpi_html(f"€{total/1000:.1f}M" if total else "—", "Gesamtvergütung", "Vorstandsboard gesamt"), unsafe_allow_html=True)
+        with k1: st.markdown(kpi_html(f"#{rank}" if rank else "—", "DAX Peer Rank", f"of {len(year_data)} companies"), unsafe_allow_html=True)
+        with k2: st.markdown(kpi_html(f"Top {100-pctile:.0f}%" if pctile else "—", "Percentile", f"Compensation Level {sel_year}"), unsafe_allow_html=True)
+        with k3: st.markdown(kpi_html(f"{aep:+.0f}%" if aep is not None else "—", "vs. Model", t_lbl, t_col, t_col), unsafe_allow_html=True)
+        with k4: st.markdown(kpi_html(f"€{total/1000:.1f}M" if total else "—", "Total Compensation", "Total Executive Board"), unsafe_allow_html=True)
 
-    st.markdown('<div class="sec"><div class="sec-title">Vergütungsvergleich — alle DAX-Unternehmen</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Balken = tatsächliche Vergütung · Rauten = Modell-Erwartungsband · Farbe = Benchmark-Signal</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec"><div class="sec-title">Compensation Comparison — All DAX Companies</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Bars = actual compensation · Diamonds = model expectation band · Color = benchmark signal</div></div>', unsafe_allow_html=True)
 
     if len(year_data) > 0:
         def bar_color(row):
@@ -925,15 +947,15 @@ def show_peer():
                 array=(year_data["pred_comp_high"]-year_data["pred_comp"]).fillna(0),
                 arrayminus=(year_data["pred_comp"]-year_data["pred_comp_low"]).fillna(0)),
             mode="markers", marker=dict(symbol="diamond", size=9, color=ORANGE),
-            name="Modell-Erwartung (80%-Band)"))
+            name="Model Expectation (80% Band)"))
         fig.add_trace(go.Bar(
             x=year_data["company_shortname"], y=year_data["total_comp_bt"],
-            marker_color=colors, opacity=0.85, name="Tatsächlich",
+            marker_color=colors, opacity=0.85, name="Actual",
             hovertemplate="%{x}: €%{y:,.0f}K<extra></extra>"))
         fig.update_layout(height=360, barmode="overlay",
             margin=dict(l=0,r=0,t=10,b=0),
             plot_bgcolor="white", paper_bgcolor="white",
-            yaxis=dict(title="Gesamtvergütung (€ Tsd.)", gridcolor=GRAYLT),
+            yaxis=dict(title="Total Compensation (€K)", gridcolor=GRAYLT),
             xaxis=dict(tickangle=-30, gridcolor=GRAYLT),
             legend=dict(orientation="h", yanchor="bottom", y=1.01))
         st.plotly_chart(fig, use_container_width=True)
@@ -942,7 +964,7 @@ def show_peer():
     if in_model and "sector" in df.columns:
         co_sector = df[df["company_shortname"]==sel_co]["sector"].iloc[0] if len(df[df["company_shortname"]==sel_co])>0 else None
         if co_sector:
-            st.markdown(f'<div class="sec"><div class="sec-title">Sektorvergleich: {co_sector}</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Wie steht {sel_co} vs. Unternehmen im gleichen Sektor?</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="sec"><div class="sec-title">Sector Comparison: {co_sector}</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">How does {sel_co} compare vs. companies in the same sector?</div></div>', unsafe_allow_html=True)
             sect_data = df[(df["sector"]==co_sector) & (df["year"]==sel_year)].sort_values("total_comp_bt", ascending=False)
             if len(sect_data) > 1:
                 sect_colors = [ORANGE if c==sel_co else "#cbd5e1" for c in sect_data["company_shortname"]]
@@ -952,33 +974,33 @@ def show_peer():
                     hovertemplate="%{x}: €%{y:,.0f}K<extra></extra>"))
                 fig2.update_layout(height=240, margin=dict(l=0,r=0,t=10,b=0),
                     plot_bgcolor="white", paper_bgcolor="white",
-                    yaxis=dict(title="Gesamtvergütung (€ Tsd.)", gridcolor=GRAYLT),
+                    yaxis=dict(title="Total Compensation (€K)", gridcolor=GRAYLT),
                     xaxis=dict(tickangle=-20))
                 st.plotly_chart(fig2, use_container_width=True)
 
 # ─────────────────────────────────────────────
-# MODULE 5 — ANOMALIE-DETEKTOR
+# MODULE 5 — ANOMALY DETECTOR
 # ─────────────────────────────────────────────
 def show_anomaly():
-    sidebar_nav("overview", "← Zur Übersicht")
+    sidebar_nav("overview", "← Back to Overview")
     sel_co, sel_year = st.session_state.company, st.session_state.year
     in_model = sel_co in MODEL_COS
     co_df = df[df["company_shortname"] == sel_co].sort_values("year")
     co_yr = df[(df["company_shortname"]==sel_co) & (df["year"]==sel_year)]
 
-    module_header("🔍", "Anomalie-Detektor", "Ungewöhnliche Vergütungsstrukturen · Outlier-Erkennung · Universum-Vergleich", sel_co, sel_year)
+    module_header("🔍", "Anomaly Detector", "Unusual Compensation Structures · Outlier Detection · Universe Comparison", sel_co, sel_year)
 
     st.markdown("""<div class="insight">
-        <strong>Was ist eine Anomalie?</strong> Unser Detektor flaggt Unternehmen mit atypischem
-        STI/LTI-Mix, extremem Bonus-Gehalts-Verhältnis oder ungewöhnlich starken Vergütungssprüngen —
-        auch wenn die absolute Höhe marktkonform wäre. Anomalien können auf Short-Term-Bias,
-        versteckte One-Time-Payments oder intransparente Incentive-Designs hinweisen.
+        <strong>What is an anomaly?</strong> Our detector flags companies with an atypical
+        STI/LTI mix, extreme bonus-to-salary ratios, or unusually large compensation jumps —
+        even when the absolute level appears market-aligned. Anomalies can indicate short-term bias,
+        hidden one-time payments, or opaque incentive designs.
     </div>""", unsafe_allow_html=True)
 
     col_l, col_r = st.columns([3, 2], gap="large")
 
     with col_l:
-        st.markdown('<div class="sec"><div class="sec-title">Anomalie-Score vs. Vergütungshöhe — Universum</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Alle Unternehmen im Datensatz · Orange markiert = ausgewählt · Rot = flagged als Anomalie</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Anomaly Score vs. Compensation Level — Universe</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">All companies in dataset · Orange = selected · Red = flagged as anomaly</div></div>', unsafe_allow_html=True)
         au_yr = anomaly_u[anomaly_u["year"]==sel_year]
         if len(au_yr) > 0:
             is_anom_mask  = au_yr["is_anomaly"] == 1
@@ -996,7 +1018,7 @@ def show_anomaly():
                 x=au_yr[is_anom_mask & ~sel_mask]["total_comp_bt"],
                 y=au_yr[is_anom_mask & ~sel_mask]["anomaly_score_pct"],
                 mode="markers", marker=dict(size=9, color=RED, opacity=0.75, symbol="triangle-up"),
-                name="🚨 Anomalie", hovertemplate="<b>%{text}</b><br>Verg.: €%{x:,.0f}K<br>Score: %{y:.1f}<extra></extra>",
+                name="🚨 Anomaly", hovertemplate="<b>%{text}</b><br>Comp.: €%{x:,.0f}K<br>Score: %{y:.1f}<extra></extra>",
                 text=au_yr[is_anom_mask & ~sel_mask]["company_shortname"]))
             sel_row = au_yr[sel_mask]
             if len(sel_row) > 0:
@@ -1009,17 +1031,17 @@ def show_anomaly():
                     textfont=dict(size=10, color=NAVY),
                     name=f"▶ {sel_co}"))
             fig.add_hline(y=50, line_dash="dot", line_color=AMBER, line_width=1,
-                          annotation_text="Anomalie-Schwelle", annotation_font=dict(size=8, color=AMBER))
+                          annotation_text="Anomaly Threshold", annotation_font=dict(size=8, color=AMBER))
             fig.update_layout(height=350, margin=dict(l=0,r=0,t=10,b=0),
                 plot_bgcolor="white", paper_bgcolor="white",
-                xaxis=dict(title="Gesamtvergütung (€ Tsd.)", gridcolor=GRAYLT),
-                yaxis=dict(title="Anomalie-Score (0–100)", gridcolor=GRAYLT),
+                xaxis=dict(title="Total Compensation (€K)", gridcolor=GRAYLT),
+                yaxis=dict(title="Anomaly Score (0–100)", gridcolor=GRAYLT),
                 legend=dict(orientation="h", yanchor="bottom", y=1.01),
                 hovermode="closest")
             st.plotly_chart(fig, use_container_width=True)
 
     with col_r:
-        st.markdown(f'<div class="sec"><div class="sec-title">Anomalie-Profil — {sel_co}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sec"><div class="sec-title">Anomaly Profile — {sel_co}</div></div>', unsafe_allow_html=True)
         if in_model and len(co_yr) > 0:
             anom_sc  = float(co_yr["anomaly_score_pct"].iloc[0]) if co_yr["anomaly_score_pct"].notna().any() else None
             is_anom  = bool(co_yr["is_anomaly"].iloc[0]) if "is_anomaly" in co_yr.columns and co_yr["is_anomaly"].notna().any() else None
@@ -1032,10 +1054,10 @@ def show_anomaly():
             # Status badge
             badge_c = "#f87171" if is_anom else "#4ade80"
             badge_bg = "#7f1d1d" if is_anom else "#14532d"
-            badge_txt = "🚨 Anomalie erkannt" if is_anom else "✅ Keine Anomalie"
+            badge_txt = "🚨 Anomaly Detected" if is_anom else "✅ No Anomaly"
             st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-bottom:14px;">
                 <div style="font-size:2.4rem;font-weight:800;color:{badge_c};line-height:1;">{anom_sc:.0f}<span style="font-size:1.1rem;color:#475569;">/100</span></div>
-                <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-top:4px;">Anomalie-Score {sel_year}</div>
+                <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-top:4px;">Anomaly Score {sel_year}</div>
                 <div style="background:{badge_bg};border-radius:6px;padding:3px 12px;display:inline-block;margin-top:8px;font-size:.78rem;font-weight:700;color:{badge_c};">{badge_txt}</div>
             </div>""", unsafe_allow_html=True)
 
@@ -1044,15 +1066,15 @@ def show_anomaly():
             dax_sti = df[df["year"]==sel_year]["sti_pct"].mean()
             dax_lti = df[df["year"]==sel_year]["lti_pct"].mean()
             rows = [
-                ("Fix-Anteil", f"{fix_p:.0f}%" if fix_p else "—", f"DAX ø {dax_fix:.0f}%",
+                ("Fixed Share", f"{fix_p:.0f}%" if fix_p else "—", f"DAX avg. {dax_fix:.0f}%",
                  RED if fix_p and abs(fix_p-dax_fix)>15 else GRAY),
-                ("STI-Anteil", f"{sti_p:.0f}%" if sti_p else "—", f"DAX ø {dax_sti:.0f}%",
+                ("STI Share", f"{sti_p:.0f}%" if sti_p else "—", f"DAX avg. {dax_sti:.0f}%",
                  RED if sti_p and abs(sti_p-dax_sti)>15 else GRAY),
-                ("LTI-Anteil", f"{lti_p:.0f}%" if lti_p else "—", f"DAX ø {dax_lti:.0f}%",
+                ("LTI Share", f"{lti_p:.0f}%" if lti_p else "—", f"DAX avg. {dax_lti:.0f}%",
                  RED if lti_p and abs(lti_p-dax_lti)>15 else GRAY),
-                ("Bonus/Gehalt", f"{bsr:.1f}x" if bsr else "—", "DAX ø ~1.5x",
+                ("Bonus/Salary", f"{bsr:.1f}x" if bsr else "—", "DAX avg. ~1.5x",
                  RED if bsr and bsr > 3 else GRAY),
-                ("Vergütungswachstum YoY", f"{comp_yoy:+.1f}%" if comp_yoy and pd.notna(comp_yoy) else "—", "",
+                ("Compensation Growth YoY", f"{comp_yoy:+.1f}%" if comp_yoy and pd.notna(comp_yoy) else "—", "",
                  RED if comp_yoy and comp_yoy > 30 else GRAY),
             ]
             st.markdown('<div style="background:white;border-radius:12px;padding:14px 16px;border:1px solid #e2e8f0;">', unsafe_allow_html=True)
@@ -1060,11 +1082,11 @@ def show_anomaly():
                 st.markdown(f'<div class="metric-row"><span style="color:{GRAY};">{lbl}<br><span style="font-size:.7rem;color:#94a3b8;">{ref}</span></span><span style="font-weight:700;color:{col};">{val}</span></div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.info(f"Anomalie-Score für {sel_co} in Kerngruppe nicht verfügbar.")
+            st.info(f"Anomaly score for {sel_co} not available in core group.")
 
     # Timeline
     if in_model and len(co_df) > 0 and "anomaly_score_pct" in co_df.columns:
-        st.markdown('<div class="sec"><div class="sec-title">Anomalie-Score im Zeitverlauf</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">Anomaly Score Over Time</div></div>', unsafe_allow_html=True)
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(x=co_df["year"], y=co_df["anomaly_score_pct"],
             fill="tozeroy", fillcolor="rgba(249,115,22,.10)",
@@ -1072,7 +1094,7 @@ def show_anomaly():
             marker=dict(size=6, color=[RED if v else ORANGE for v in co_df.get("is_anomaly", pd.Series(False, index=co_df.index))]),
             hovertemplate="Jahr %{x}: Score %{y:.1f}<extra></extra>"))
         fig2.add_hline(y=50, line_dash="dot", line_color=AMBER, line_width=1,
-                       annotation_text="Anomalie-Schwelle", annotation_font=dict(size=8))
+                       annotation_text="Anomaly Threshold", annotation_font=dict(size=8))
         fig2.update_layout(height=200, margin=dict(l=0,r=0,t=10,b=0),
             plot_bgcolor="white", paper_bgcolor="white",
             yaxis=dict(range=[0,105], gridcolor=GRAYLT), xaxis=dict(gridcolor=GRAYLT))
@@ -1082,7 +1104,7 @@ def show_anomaly():
 # MODULE 6 — ESG RATING
 # ─────────────────────────────────────────────
 def show_esg():
-    sidebar_nav("overview", "← Zur Übersicht")
+    sidebar_nav("overview", "← Back to Overview")
     sel_co, sel_year = st.session_state.company, st.session_state.year
     co_esg = esg[esg["company_shortname"] == sel_co].sort_values("year") if len(esg) > 0 else pd.DataFrame()
 
@@ -1092,7 +1114,7 @@ def show_esg():
         co_esg_yr = co_esg.iloc[[-1]]
     actual_esg_year = int(co_esg_yr["year"].iloc[0]) if len(co_esg_yr) > 0 else sel_year
 
-    module_header("🌱", "ESG-Rating", f"ESG-Integration in Vergütung · CSRD-Compliance · Gender Equity · Pay Ratio · Datenjahr: {actual_esg_year}", sel_co, sel_year)
+    module_header("🌱", "ESG Rating", f"ESG Integration in Compensation · CSRD Compliance · Gender Equity · Pay Ratio · Data Year: {actual_esg_year}", sel_co, sel_year)
 
     def esg_val(col):
         v = co_esg_yr[col].iloc[0] if len(co_esg_yr) > 0 and col in co_esg_yr.columns and co_esg_yr[col].notna().any() else None
@@ -1106,24 +1128,24 @@ def show_esg():
 
     # Warn if showing fallback year
     if actual_esg_year != sel_year:
-        st.markdown(f'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:.8rem;color:#713f12;">ℹ️ Keine ESG-Daten für {sel_year} — zeige letztverfügbares Jahr: <strong>{actual_esg_year}</strong></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 14px;margin-bottom:10px;font-size:.8rem;color:#713f12;">ℹ️ No ESG data for {sel_year} — showing last available year: <strong>{actual_esg_year}</strong></div>', unsafe_allow_html=True)
 
     st.markdown(f"""<div class="insight">
-        <strong>ESG & CSRD:</strong> Die EU Corporate Sustainability Reporting Directive (CSRD) ist seit 2025
-        verpflichtend. Sie verlangt explizite ESG-Vergütungsziele, verifizierbare KPI-Texte und
-        Offenlegung der Anreizstruktur. Nur <strong>16 von 43 DAX-Unternehmen (37%)</strong> erfüllen
-        diesen Standard. {sel_co} hat aktuell <strong>{esg_tot:.0f}% ESG-Anteil</strong> in STI+LTI.
+        <strong>ESG & CSRD:</strong> The EU Corporate Sustainability Reporting Directive (CSRD) has been
+        mandatory since 2025. It requires explicit ESG compensation targets, verifiable KPI texts and
+        disclosure of the incentive structure. Only <strong>16 of 43 DAX companies (37%)</strong> meet
+        this standard. {sel_co} currently has <strong>{esg_tot:.0f}% ESG share</strong> in STI+LTI.
     </div>""", unsafe_allow_html=True)
 
     # KPIs
     k1,k2,k3,k4 = st.columns(4)
-    with k1: st.markdown(kpi_html(f"{sti_esg:.0f}%" if sti_esg else "0%", "ESG-Anteil STI", "✅ CSRD-relevant" if sti_esg and sti_esg>0 else "❌ Kein ESG", ORANGE if sti_esg and sti_esg>0 else "#94a3b8", GREEN if sti_esg and sti_esg>0 else RED), unsafe_allow_html=True)
-    with k2: st.markdown(kpi_html(f"{lti_esg:.0f}%" if lti_esg else "0%", "ESG-Anteil LTI", "Langfristige Nachhaltigkeitsziele", ORANGE if lti_esg and lti_esg>0 else "#94a3b8"), unsafe_allow_html=True)
-    with k3: st.markdown(kpi_html(f"{fem_pct:.0f}%" if fem_pct else "—", "Frauen im Vorstand", "✅ ARUG II ≥30%" if fem_pct and fem_pct>=30 else "⚠ Unter 30%-Ziel", NAVY, GREEN if fem_pct and fem_pct>=30 else AMBER), unsafe_allow_html=True)
-    with k4: st.markdown(kpi_html(f"{w_ratio:.0f}x" if w_ratio else "—", "Exec/Worker Pay", "⚠ Sehr hoch" if w_ratio and w_ratio>60 else "Einkommensungleichheit", RED if w_ratio and w_ratio>60 else NAVY, RED if w_ratio and w_ratio>60 else GRAY), unsafe_allow_html=True)
+    with k1: st.markdown(kpi_html(f"{sti_esg:.0f}%" if sti_esg else "0%", "ESG Share STI", "✅ CSRD-relevant" if sti_esg and sti_esg>0 else "❌ No ESG", ORANGE if sti_esg and sti_esg>0 else "#94a3b8", GREEN if sti_esg and sti_esg>0 else RED), unsafe_allow_html=True)
+    with k2: st.markdown(kpi_html(f"{lti_esg:.0f}%" if lti_esg else "0%", "ESG Share LTI", "Long-term sustainability targets", ORANGE if lti_esg and lti_esg>0 else "#94a3b8"), unsafe_allow_html=True)
+    with k3: st.markdown(kpi_html(f"{fem_pct:.0f}%" if fem_pct else "—", "Women on Board", "✅ ARUG II ≥30%" if fem_pct and fem_pct>=30 else "⚠ Below 30% Target", NAVY, GREEN if fem_pct and fem_pct>=30 else AMBER), unsafe_allow_html=True)
+    with k4: st.markdown(kpi_html(f"{w_ratio:.0f}x" if w_ratio else "—", "Exec/Worker Pay", "⚠ Very High" if w_ratio and w_ratio>60 else "Income Inequality", RED if w_ratio and w_ratio>60 else NAVY, RED if w_ratio and w_ratio>60 else GRAY), unsafe_allow_html=True)
 
     # DAX Bubble Chart
-    st.markdown('<div class="sec"><div class="sec-title">DAX-Überblick: Wer integriert ESG wirklich?</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">X/Y = ESG-Anteil STI/LTI · Punktgröße = Ø Vergütung · Orange = mit ESG · Grau = ohne ESG</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec"><div class="sec-title">DAX Overview: Who Actually Integrates ESG?</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">X/Y = ESG share STI/LTI · Dot size = avg. compensation · Orange = with ESG · Grey = without ESG</div></div>', unsafe_allow_html=True)
 
     if len(esg) > 0:
         recent = esg[esg["year"]>=2022]
@@ -1134,7 +1156,7 @@ def show_esg():
         bub["is_sel"]  = bub["company_shortname"] == sel_co
 
         fig = go.Figure()
-        for has, color, name in [(False,"#cbd5e1","Kein ESG-Bezug"),(True,ORANGE,"Mit ESG-Bezug")]:
+        for has, color, name in [(False,"#cbd5e1","No ESG Link"),(True,ORANGE,"With ESG Link")]:
             d = bub[~bub["is_sel"] & (bub["has_esg"]==has)]
             fig.add_trace(go.Scatter(x=d["sti"], y=d["lti"], mode="markers+text",
                 marker=dict(size=d["avg_comp"].clip(50,2000).apply(lambda v: max(8,min(26,v/80))),
@@ -1152,14 +1174,14 @@ def show_esg():
                 textfont=dict(size=11, color=NAVY),
                 hovertemplate=f"<b>{sel_co}</b><extra></extra>",
                 showlegend=True, name=f"▶ {sel_co}"))
-        for x,y,txt,col in [(45,45,"ESG-Leader","#15803d"),(3,45,"LTI-fokussiert","#1d4ed8"),(45,3,"STI-fokussiert",AMBER),(3,3,"Kein ESG-Bezug",RED)]:
+        for x,y,txt,col in [(45,45,"ESG Leader","#15803d"),(3,45,"LTI-focused","#1d4ed8"),(45,3,"STI-focused",AMBER),(3,3,"No ESG Link",RED)]:
             fig.add_annotation(x=x, y=y, text=txt, showarrow=False, font=dict(color=col,size=9), opacity=0.5)
         fig.add_hline(y=20,line_dash="dot",line_color="#e2e8f0",line_width=1)
         fig.add_vline(x=20,line_dash="dot",line_color="#e2e8f0",line_width=1)
         fig.update_layout(height=420, margin=dict(l=0,r=0,t=10,b=0),
             plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="ESG-Anteil STI (%)", range=[-5,68], gridcolor=GRAYLT),
-            yaxis=dict(title="ESG-Anteil LTI (%)", range=[-5,68], gridcolor=GRAYLT),
+            xaxis=dict(title="ESG Share STI (%)", range=[-5,68], gridcolor=GRAYLT),
+            yaxis=dict(title="ESG Share LTI (%)", range=[-5,68], gridcolor=GRAYLT),
             hovermode="closest",
             legend=dict(orientation="h", yanchor="bottom", y=1.01))
         st.plotly_chart(fig, use_container_width=True)
@@ -1167,7 +1189,7 @@ def show_esg():
     col_kpi, col_csrd = st.columns([3, 2], gap="large")
 
     with col_kpi:
-        st.markdown(f"**KPI-Texte aus dem Vergütungsbericht — {sel_co} ({actual_esg_year})**")
+        st.markdown(f"**KPI Texts from the Compensation Report — {sel_co} ({actual_esg_year})**")
         # Use year-specific row first; else search all years
         co_kpi_rows = co_esg_yr[co_esg_yr[["stipi1","stipi2","ltipi1","ltipi2"]].notna().any(axis=1)] if len(co_esg_yr)>0 else pd.DataFrame()
         if len(co_kpi_rows) == 0:
@@ -1189,28 +1211,28 @@ def show_esg():
                     </div>""", unsafe_allow_html=True)
             if sel_co in {"BMW","Volkswagen","Mercedes-Benz"}:
                 st.markdown(f"""<div class="flag-red">
-                    <strong>⚠️ Disclosure-Opacity:</strong> {sel_co} verwendet abstrakte KPI-Begriffe —
-                    ein externer ESG-Inhalt ist nicht verifizierbar. Genau das adressiert die CSRD.
+                    <strong>⚠️ Disclosure Opacity:</strong> {sel_co} uses abstract KPI terms —
+                    external ESG content cannot be verified. This is exactly what CSRD addresses.
                 </div>""", unsafe_allow_html=True)
         else:
-            st.info("KPI-Texte verfügbar für 2022–2024. Für frühere Jahre wurden keine Textdaten erhoben.")
+            st.info("KPI texts available for 2022–2024. No text data collected for earlier years.")
 
     with col_csrd:
-        st.markdown(f"**CSRD-Compliance-Check ({actual_esg_year})**")
-        st.caption("EU Corporate Sustainability Reporting Directive — verpflichtend ab 2025")
+        st.markdown(f"**CSRD Compliance Check ({actual_esg_year})**")
+        st.caption("EU Corporate Sustainability Reporting Directive — mandatory from 2025")
         OPACITY = {"BMW","Volkswagen","Mercedes-Benz"}
         has_kpi_text = len(co_kpi_rows) > 0
         checks = [
-            ("ESG-Ziel in STI verankert",           sti_esg is not None and sti_esg > 0),
-            ("ESG-Ziel in LTI verankert",           lti_esg is not None and lti_esg > 0),
-            ("KPI-Text öffentlich verifizierbar",   has_kpi_text and sel_co not in OPACITY),
-            ("Keine abstrakten Blanket-KPIs",       sel_co not in OPACITY),
-            ("Frauenquote ≥30% (ARUG II)",          fem_pct is not None and fem_pct >= 30),
+            ("ESG target anchored in STI",          sti_esg is not None and sti_esg > 0),
+            ("ESG target anchored in LTI",          lti_esg is not None and lti_esg > 0),
+            ("KPI text publicly verifiable",        has_kpi_text and sel_co not in OPACITY),
+            ("No abstract blanket KPIs",            sel_co not in OPACITY),
+            ("Female quota ≥30% (ARUG II)",         fem_pct is not None and fem_pct >= 30),
         ]
         score = sum(1 for _,ok in checks if ok)
         s_fg  = "#4ade80" if score>=4 else "#fbbf24" if score>=3 else "#f87171"
         s_bg  = "#14532d" if score>=4 else "#713f12" if score>=3 else "#7f1d1d"
-        s_lbl = "Compliant" if score>=4 else "Teilweise" if score>=3 else "Nicht compliant"
+        s_lbl = "Compliant" if score>=4 else "Partial" if score>=3 else "Not Compliant"
         st.markdown(f"""<div style="background:{NAVY};border-radius:12px;padding:16px;text-align:center;margin-bottom:14px;">
             <div style="font-size:2.6rem;font-weight:800;color:{s_fg};line-height:1;">{score}<span style="font-size:1.2rem;color:#475569;">/5</span></div>
             <div style="font-size:.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">CSRD-Score</div>
@@ -1222,7 +1244,7 @@ def show_esg():
             st.markdown(f'<div style="font-size:.82rem;color:{col};padding:6px 0;border-bottom:1px solid #f1f5f9;">{icon} {label}</div>', unsafe_allow_html=True)
 
     # Pay Equity
-    st.markdown('<div class="sec"><div class="sec-title">Pay Equity — Gender &amp; CEO/Worker Ratio</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Frauenanteil vs. ARUG II-Ziel · Einkommensungleichheit im DAX-Vergleich</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec"><div class="sec-title">Pay Equity — Gender &amp; CEO/Worker Ratio</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Female share vs. ARUG II target · Income inequality across DAX</div></div>', unsafe_allow_html=True)
     col_f, col_r2 = st.columns(2)
     with col_f:
         latest_fem = (esg.sort_values("year").groupby("company_shortname").last()
@@ -1236,7 +1258,7 @@ def show_esg():
             annotation_text="30% (ARUG II)", annotation_font=dict(size=8, color=GREEN))
         fig_f.update_layout(height=480, margin=dict(l=0,r=0,t=10,b=0),
             plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="Frauenanteil (%)", range=[0,65], gridcolor=GRAYLT),
+            xaxis=dict(title="Female Share (%)", range=[0,65], gridcolor=GRAYLT),
             yaxis=dict(tickfont=dict(size=9)))
         st.plotly_chart(fig_f, use_container_width=True)
     with col_r2:
@@ -1259,7 +1281,7 @@ def show_esg():
         st.plotly_chart(fig_r, use_container_width=True)
 
     # ── ESG Pay-Washing Detector ──────────────────────────────────
-    st.markdown('<div class="sec"><div class="sec-title">🔬 Externer ESG-Validierungscheck — Pay-Washing Detektor</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Vergleicht unsere abgeleitete ESG-Pay-Verknüpfung mit Sustainalytics-Risikorating & MSCI ESG-Score</div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec"><div class="sec-title">🔬 External ESG Validation — Pay-Washing Detector</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Compares our derived ESG-pay link with Sustainalytics risk rating & MSCI ESG score</div></div>', unsafe_allow_html=True)
 
     if len(ext_esg) > 0:
         co_ext = ext_esg[ext_esg["company_shortname"] == sel_co]
@@ -1298,10 +1320,10 @@ def show_esg():
             cA, cB, cC = st.columns([1, 1, 1], gap="large")
             with cA:
                 st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
-                    <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">Sustainalytics ESG Risk</div>
+                    <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">Sustainalytics Risk</div>
                     <div style="font-size:2.6rem;font-weight:900;color:{sust_col};line-height:1;">{sust_score:.1f}</div>
                     <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">/ 50 · {sust_cat} Risk</div>
-                    <div style="background:{sust_col}22;border:1px solid {sust_col}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{sust_col};">{"✓ Gut" if sust_cat in ("Low","Negligible") else "⚠ Mittel" if sust_cat=="Medium" else "✗ Hoch"}</div>
+                    <div style="background:{sust_col}22;border:1px solid {sust_col}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{sust_col};">{"✓ Good" if sust_cat in ("Low","Negligible") else "⚠ Medium" if sust_cat=="Medium" else "✗ High"}</div>
                 </div>""", unsafe_allow_html=True)
             with cB:
                 st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
@@ -1316,14 +1338,14 @@ def show_esg():
                     st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
                         <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">ExComp ESG-Pay Score</div>
                         <div style="font-size:2.6rem;font-weight:900;color:{pcolor};line-height:1;">{pay_esg_score:.0f}</div>
-                        <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">/ 100 · abgeleitet aus KPI-Analyse</div>
-                        <div style="background:{pcolor}22;border:1px solid {pcolor}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{pcolor};">{"ESG-Zahler" if pay_esg_score>=25 else "Niedrig" if pay_esg_score>=5 else "Kein ESG-Bezug"}</div>
+                        <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">/ 100 · derived from KPI analysis</div>
+                        <div style="background:{pcolor}22;border:1px solid {pcolor}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{pcolor};">{"ESG Payer" if pay_esg_score>=25 else "Low" if pay_esg_score>=5 else "No ESG Link"}</div>
                     </div>""", unsafe_allow_html=True)
                 else:
                     st.markdown(f"""<div style="background:{NAVY};border-radius:16px;padding:20px;text-align:center;">
                         <div style="font-size:.65rem;color:#64748b;text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin-bottom:8px;">ExComp ESG-Pay Score</div>
                         <div style="font-size:2.6rem;font-weight:900;color:{AMBER};line-height:1;">N/V</div>
-                        <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">Nicht verifizierbar</div>
+                        <div style="font-size:.7rem;color:#94a3b8;margin-top:3px;">Not Verifiable</div>
                         <div style="background:{AMBER}22;border:1px solid {AMBER}44;border-radius:8px;padding:4px 12px;display:inline-block;margin-top:8px;font-size:.72rem;font-weight:700;color:{AMBER};">⚠ Opacity</div>
                     </div>""", unsafe_allow_html=True)
 
@@ -1331,39 +1353,39 @@ def show_esg():
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
             if wash_risk == "aligned":
                 st.markdown(f"""<div class="flag-green">
-                    <strong>✅ ESG-Pay Alignment:</strong> {sel_co} zeigt Konsistenz zwischen externen ESG-Ratings
-                    (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}) und ESG-Vergütungsintegration ({esg_tot:.0f}% in Pay).
-                    Das Vergütungssystem stützt die ESG-Leadership-Position.
+                    <strong>✅ ESG-Pay Alignment:</strong> {sel_co} shows consistency between external ESG ratings
+                    (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}) and ESG pay integration ({esg_tot:.0f}% in pay).
+                    The compensation system supports the ESG leadership position.
                 </div>""", unsafe_allow_html=True)
             elif wash_risk == "washing":
                 st.markdown(f"""<div class="flag-red">
-                    <strong>🚨 ESG Pay-Washing Risiko:</strong> {sel_co} genießt ein starkes externes ESG-Rating
-                    (Sustainalytics: {sust_score:.1f} Low/Medium · MSCI: {msci_rating}), verknüpft jedoch
-                    <strong>0% der Vorstandsvergütung</strong> mit ESG-Zielen. Externe Reputation ohne interne Anreize —
-                    exakt das, was die CSRD sichtbar machen will.
+                    <strong>🚨 ESG Pay-Washing Risk:</strong> {sel_co} enjoys a strong external ESG rating
+                    (Sustainalytics: {sust_score:.1f} Low/Medium · MSCI: {msci_rating}), yet links
+                    <strong>0% of executive pay</strong> to ESG targets. External reputation without internal incentives —
+                    exactly what CSRD is designed to expose.
                 </div>""", unsafe_allow_html=True)
             elif wash_risk == "disconnect":
                 st.markdown(f"""<div class="flag-amber">
-                    <strong>⚠ ESG Pay-Performance Lücke:</strong> {sel_co} zahlt {esg_tot:.0f}% der Vergütung
-                    auf ESG-Ziele ({AMBER}Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}),
-                    zeigt jedoch noch überdurchschnittliches ESG-Risiko. Pay-for-ESG allein reicht nicht — die Zielqualität entscheidet.
+                    <strong>⚠ ESG Pay-Performance Gap:</strong> {sel_co} ties {esg_tot:.0f}% of pay
+                    to ESG targets (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}),
+                    yet still shows above-average ESG risk. Pay-for-ESG alone is not enough — target quality matters.
                 </div>""", unsafe_allow_html=True)
             elif wash_risk == "opacity":
                 st.markdown(f"""<div class="flag-amber">
-                    <strong>⚠ Disclosure-Opacity:</strong> {sel_co} verwendet abstrakte Vergütungsbegriffe —
-                    eine externe Verifizierung des ESG-Anteils ist nicht möglich. CSRD §29a
-                    verlangt explizite, überprüfbare ESG-KPI-Texte. Externes Rating: MSCI {msci_rating} ·
+                    <strong>⚠ Disclosure Opacity:</strong> {sel_co} uses abstract compensation terms —
+                    external verification of the ESG share is not possible. CSRD §29a
+                    requires explicit, verifiable ESG KPI texts. External rating: MSCI {msci_rating} ·
                     Sustainalytics {sust_score:.1f}.
                 </div>""", unsafe_allow_html=True)
             else:
                 st.markdown(f"""<div class="flag-amber">
-                    <strong>ℹ ESG-Pay im Aufbau:</strong> Niedriger ESG-Anteil in der Vergütung bei moderaten
-                    externen Ratings (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}).
-                    CSRD-Compliance-Druck wird Anpassungen erfordern.
+                    <strong>ℹ ESG-Pay in Progress:</strong> Low ESG share in compensation with moderate
+                    external ratings (Sustainalytics: {sust_score:.1f} · MSCI: {msci_rating}).
+                    CSRD compliance pressure will require adjustments.
                 </div>""", unsafe_allow_html=True)
 
         # DAX Pay-Washing Heatmap
-        st.markdown('<div class="sec"><div class="sec-title">DAX-Überblick: ESG-Pay vs. Externer ESG-Score</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Quadranten: Wer zahlt für ESG — und hat das externe Scores verbessert?</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec"><div class="sec-title">DAX Overview: ESG-Pay vs. External ESG Score</div><div class="sec-sub" style="font-size:.78rem;color:#64748b;margin-top:2px;">Quadrants: Who pays for ESG — and has it improved external scores?</div></div>', unsafe_allow_html=True)
         recent = esg[esg["year"]>=2022]
         bub2 = recent.groupby("company_shortname").agg(
             sti=("sti_esg_share","mean"), lti=("lti_esg_share","mean"),
@@ -1384,8 +1406,8 @@ def show_esg():
         bub2["color"] = bub2.apply(quadrant_color, axis=1)
 
         fig_w = go.Figure()
-        for color, label in [("#16a34a","✅ ESG-Leader"), ("#dc2626","🚨 Pay-Washing-Risiko"),
-                              ("#d97706","⚠ Pay ohne Ergebnis"), ("#94a3b8","Neutral")]:
+        for color, label in [("#16a34a","✅ ESG Leader"), ("#dc2626","🚨 Pay-Washing Risk"),
+                              ("#d97706","⚠ Pay Without Results"), ("#94a3b8","Neutral")]:
             d = bub2[~bub2["is_sel"] & (bub2["color"]==color)]
             if len(d)>0:
                 fig_w.add_trace(go.Scatter(
@@ -1413,20 +1435,20 @@ def show_esg():
         fig_w.add_hline(y=65, line_dash="dot", line_color="#e2e8f0", line_width=1)
         fig_w.add_vline(x=12, line_dash="dot", line_color="#e2e8f0", line_width=1)
         # Quadrant labels
-        for x, y, txt, col in [(35,85,"ESG-Leader","#15803d"), (2,85,"🚨 Pay-Washing","#dc2626"),
-                                (35,35,"Pay ohne Ergebnis","#d97706"), (2,35,"Neutral","#94a3b8")]:
+        for x, y, txt, col in [(35,85,"ESG Leader","#15803d"), (2,85,"🚨 Pay-Washing","#dc2626"),
+                                (35,35,"Pay Without Results","#d97706"), (2,35,"Neutral","#94a3b8")]:
             fig_w.add_annotation(x=x, y=y, text=txt, showarrow=False,
                 font=dict(color=col, size=9), opacity=0.6)
         fig_w.update_layout(
             height=440, margin=dict(l=0,r=0,t=10,b=0),
             plot_bgcolor="white", paper_bgcolor="white",
-            xaxis=dict(title="ESG-Anteil in Vergütung STI+LTI (%)", range=[-5, 68], gridcolor=GRAYLT),
-            yaxis=dict(title="ESG-Performance-Score (Sustainalytics, invertiert)", range=[20, 100], gridcolor=GRAYLT),
+            xaxis=dict(title="ESG Share in Compensation STI+LTI (%)", range=[-5, 68], gridcolor=GRAYLT),
+            yaxis=dict(title="ESG Performance Score (Sustainalytics, inverted)", range=[20, 100], gridcolor=GRAYLT),
             hovermode="closest",
             legend=dict(orientation="h", yanchor="bottom", y=1.01, font=dict(size=9)))
         st.plotly_chart(fig_w, use_container_width=True)
 
-    st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;padding:16px 0 4px 0;border-top:1px solid #e2e8f0;margin-top:12px;">ExComp · TUM Science Hackathon 2026 · ORBIS/Bureau van Dijk · DGAP · Sustainalytics · MSCI ESG · 43 DAX-Unternehmen · 2006–2024</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;color:#94a3b8;font-size:.74rem;padding:16px 0 4px 0;border-top:1px solid #e2e8f0;margin-top:12px;">ExComp · TUM Science Hackathon 2026 · ORBIS/Bureau van Dijk · DGAP · Sustainalytics · MSCI ESG · 43 DAX Companies · 2006–2024</div>', unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════
